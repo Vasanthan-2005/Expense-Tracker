@@ -289,10 +289,21 @@ class ExportImportService {
   }
 
   /// Imports expenses and incomes from an Excel (.xlsx) or CSV (.csv) file.
-  static Future<int> importExcelOrCsv() async {
+  static Future<int> importExcelOrCsv({String? initialFolderPath}) async {
+    String? initialDir = initialFolderPath;
+    if (initialDir == null || initialDir.trim().isEmpty) {
+      try {
+        final downloadsDir = await getDownloadsDirectory();
+        if (downloadsDir != null && await downloadsDir.exists()) {
+          initialDir = downloadsDir.path;
+        }
+      } catch (_) {}
+    }
+
     final pickedFiles = await FilePicker.pickFiles(
       type: FileType.custom,
-      allowedExtensions: ['xlsx', 'xls'],
+      allowedExtensions: ['xlsx', 'xls', 'csv'],
+      initialDirectory: initialDir,
     );
 
     if (pickedFiles.isEmpty) return 0;

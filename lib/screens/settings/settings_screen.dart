@@ -308,9 +308,10 @@ class _SettingsScreenState extends State<SettingsScreen>
   }
 
   Future<void> _handleExcelImport() async {
+    final folderPath = context.read<SettingsProvider>().exportFolderPath;
     setState(() => _isImporting = true);
     try {
-      final count = await ExportImportService.importExcelOrCsv();
+      final count = await ExportImportService.importExcelOrCsv(initialFolderPath: folderPath);
       if (count > 0 && mounted) {
         await context.read<ExpenseProvider>().refreshAll();
         if (mounted) {
