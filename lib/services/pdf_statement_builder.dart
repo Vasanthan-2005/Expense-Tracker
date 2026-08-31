@@ -18,12 +18,12 @@ class PdfStatementRecord {
 }
 
 class PdfStatementBuilder {
-  static String _escapePdfText(String text) {
+  static String _cleanText(String text) {
     final sanitized = text
         .replaceAll('₹', 'Rs. ')
-        .replaceAll('(', '\\(')
-        .replaceAll(')', '\\)')
-        .replaceAll('\\', '\\\\');
+        .replaceAll('(', '[')
+        .replaceAll(')', ']')
+        .replaceAll('\\', '/');
 
     final buffer = StringBuffer();
     for (int i = 0; i < sanitized.length; i++) {
@@ -34,14 +34,21 @@ class PdfStatementBuilder {
         buffer.write(' ');
       }
     }
-    return buffer.toString();
+    return buffer.toString().trim();
   }
 
-  /// Builds a colorful, professional PDF 1.4 binary document Uint8List
+  static String _truncate(String text, int maxLength) {
+    final cleaned = _cleanText(text);
+    if (cleaned.length <= maxLength) return cleaned;
+    return '${cleaned.substring(0, maxLength - 2)}..';
+  }
+
+  /// Builds a colorful, professional PDF 1.4 binary document Uint8List with crisp grid tables
   static Uint8List buildExpensePdf({
     required List<PdfStatementRecord> records,
     required String grandTotalStr,
     required String generatedDateStr,
+    String? titleSubtitle,
   }) {
     final bytesBuilder = BytesBuilder();
     final List<int> objectOffsets = [0];
@@ -67,7 +74,7 @@ class PdfStatementBuilder {
     // PDF Header
     writeString('%PDF-1.4\n');
 
-    const int itemsPerPage = 20;
+    const int itemsPerPage = 22;
     final int totalPages = (records.length / itemsPerPage).ceil().clamp(1, 999);
 
     // Object 1: Catalog
@@ -101,73 +108,94 @@ class PdfStatementBuilder {
 
       final streamBuf = StringBuffer();
 
-      // 1. Vibrant Top Indigo Banner Block (Full-width header)
+      // 1. Top Indigo Banner Block (Full-width header)
       streamBuf.writeln('0.18 0.22 0.48 rg'); // Fill Color: Indigo (#2E387B)
-      streamBuf.writeln('40 765 515 55 re f');
+      streamBuf.writeln('35 760 525 55 re f');
 
       // Banner Header Text (White Text)
       streamBuf.writeln('BT');
       streamBuf.writeln('1 1 1 rg'); // White text
       streamBuf.writeln('/F2 16 Tf');
-      streamBuf.writeln('55 798 Td');
-      streamBuf.writeln('(${_escapePdfText('EXPENSE TRACKER STATEMENT')}) Tj');
+      streamBuf.writeln('50 793 Td');
+      streamBuf.writeln('(${_cleanText('EXPENSE TRACKER STATEMENT')}) Tj');
 
+      final subTitleText = titleSubtitle != null ? ' Period: $titleSubtitle   |  ' : ' ';
       streamBuf.writeln('/F1 9 Tf');
       streamBuf.writeln('0 -16 Td');
-      streamBuf.writeln('(${_escapePdfText('Generated Date: $generatedDateStr   |   Total Records: ${records.length}   |   Page ${pageIdx + 1} of $totalPages')}) Tj');
+      streamBuf.writeln('(${_cleanText('Date: $generatedDateStr   |  $subTitleText Records: ${records.length}   |   Page ${pageIdx + 1} of $totalPages')}) Tj');
       streamBuf.writeln('ET');
 
       // 2. Table Header Bar (Dark Teal-Indigo accent)
-      streamBuf.writeln('0.28 0.34 0.62 rg'); // Header fill color
-      streamBuf.writeln('40 735 515 22 re f');
+      const double headerY = 732;
+      streamBuf.writeln('0.24 0.28 0.54 rg'); // Header fill color
+      streamBuf.writeln('35 $headerY 525 22 re f');
+      streamBuf.writeln('0.15 0.18 0.35 RG'); // Outer border
+      streamBuf.writeln('1.0 w');
+      streamBuf.writeln('35 $headerY 525 22 re s');
 
-      // Table Header Text
+      // Table Column Dividers in Header
+      for (final x in [110, 210, 355, 455]) {
+        streamBuf.writeln('$x $headerY m $x ${headerY + 22} l s');
+      }
+
+      // Table Header Text Elements (Placed in exact X columns)
       streamBuf.writeln('BT');
-      streamBuf.writeln('1 1 1 rg'); // White text
+      streamBuf.writeln('1 1 1 rg'); // White bold text
       streamBuf.writeln('/F2 9 Tf');
-      streamBuf.writeln('48 742 Td');
-      final headerLine = 'Date         Category          Expense Note                                   Amount (Rs.)      Account';
-      streamBuf.writeln('(${_escapePdfText(headerLine)}) Tj');
+
+      streamBuf.writeln('40 ${headerY + 7} Td (Date) Tj');
+      streamBuf.writeln('115 ${headerY + 7} Td (Category) Tj');
+      streamBuf.writeln('215 ${headerY + 7} Td (Expense Note) Tj');
+      streamBuf.writeln('385 ${headerY + 7} Td (Amount [Rs]) Tj');
+      streamBuf.writeln('460 ${headerY + 7} Td (Account) Tj');
       streamBuf.writeln('ET');
 
-      // 3. Table Rows
+      // 3. Table Data Rows
       final startIndex = pageIdx * itemsPerPage;
       final endIndex = (startIndex + itemsPerPage).clamp(0, records.length);
       final pageRecords = records.sublist(startIndex, endIndex);
 
-      double yPos = 712;
+      double yPos = 711;
 
       for (int rIdx = 0; rIdx < pageRecords.length; rIdx++) {
         final rec = pageRecords[rIdx];
+        const double rowHeight = 20;
 
         // Alternating row background shading
         if (rIdx % 2 == 0) {
-          streamBuf.writeln('0.96 0.97 1.0 rg'); // Very soft tinted blue-gray
-          streamBuf.writeln('40 ${yPos - 3} 515 18 re f');
+          streamBuf.writeln('0.96 0.97 1.0 rg'); // Soft tinted blue fill
+          streamBuf.writeln('35 ${yPos - 3} 525 $rowHeight re f');
         }
 
-        // Fine bottom border line for row
-        streamBuf.writeln('0.88 0.90 0.95 RG');
+        // Draw Row Bounding Box & Cell Borders
+        streamBuf.writeln('0.85 0.88 0.93 RG'); // Light gray grid borders
         streamBuf.writeln('0.5 w');
-        streamBuf.writeln('40 ${yPos - 3} m 555 ${yPos - 3} l s');
+        streamBuf.writeln('35 ${yPos - 3} 525 $rowHeight re s');
 
-        // Row text
-        streamBuf.writeln('BT');
-        streamBuf.writeln('0.15 0.15 0.20 rg'); // Dark slate text color
-        streamBuf.writeln('/F1 9 Tf');
-        streamBuf.writeln('48 $yPos Td');
+        // Draw Vertical Column Dividers for Row
+        for (final x in [110, 210, 355, 455]) {
+          streamBuf.writeln('$x ${yPos - 3} m $x ${yPos - 3 + rowHeight} l s');
+        }
 
-        final datePad = rec.date.padRight(12);
-        final catPad = rec.category.length > 15 ? '${rec.category.substring(0, 12)}...' : rec.category.padRight(15);
-        final notePad = rec.note.length > 30 ? '${rec.note.substring(0, 27)}...' : rec.note.padRight(30);
-        final amtPad = rec.amount.padLeft(14);
-        final accPad = rec.account.length > 14 ? rec.account.substring(0, 14) : rec.account;
+        // Row Cell Content
+        final dateText = _truncate(rec.date, 10);
+        final catText = _truncate(rec.category, 14);
+        final noteText = _truncate(rec.note, 24);
+        final amtText = _truncate(rec.amount, 12);
+        final accText = _truncate(rec.account, 14);
 
-        final lineStr = '$datePad $catPad $notePad $amtPad       $accPad';
-        streamBuf.writeln('(${_escapePdfText(lineStr)}) Tj');
-        streamBuf.writeln('ET');
+        // Render Date
+        streamBuf.writeln('BT 0.15 0.15 0.20 rg /F1 9 Tf 40 $yPos Td ($dateText) Tj ET');
+        // Render Category
+        streamBuf.writeln('BT 0.15 0.15 0.20 rg /F1 9 Tf 115 $yPos Td ($catText) Tj ET');
+        // Render Note
+        streamBuf.writeln('BT 0.15 0.15 0.20 rg /F1 9 Tf 215 $yPos Td ($noteText) Tj ET');
+        // Render Amount (Right Aligned in Col 3, X=355..455)
+        streamBuf.writeln('BT 0.10 0.10 0.15 rg /F2 9 Tf 365 $yPos Td ($amtText) Tj ET');
+        // Render Account
+        streamBuf.writeln('BT 0.15 0.15 0.20 rg /F1 9 Tf 460 $yPos Td ($accText) Tj ET');
 
-        yPos -= 19;
+        yPos -= rowHeight;
       }
 
       // 4. Grand Total Summary Card at end of last page
@@ -175,17 +203,17 @@ class PdfStatementBuilder {
         final totalY = yPos - 12;
         // Total Box Background & Border
         streamBuf.writeln('0.92 0.94 1.0 rg'); // Soft blue fill
-        streamBuf.writeln('40 ${totalY - 5} 515 28 re f');
+        streamBuf.writeln('35 ${totalY - 5} 525 28 re f');
         streamBuf.writeln('0.18 0.22 0.48 RG'); // Indigo border
         streamBuf.writeln('1.2 w');
-        streamBuf.writeln('40 ${totalY - 5} 515 28 re s');
+        streamBuf.writeln('35 ${totalY - 5} 525 28 re s');
 
         // Total Box Text
         streamBuf.writeln('BT');
         streamBuf.writeln('0.12 0.16 0.38 rg'); // Dark Indigo bold text
         streamBuf.writeln('/F2 11 Tf');
-        streamBuf.writeln('52 ${totalY + 4} Td');
-        streamBuf.writeln('(${_escapePdfText('GRAND TOTAL STATEMENT AMOUNT:  Rs. $grandTotalStr')}) Tj');
+        streamBuf.writeln('48 ${totalY + 4} Td');
+        streamBuf.writeln('(${_cleanText('GRAND TOTAL STATEMENT AMOUNT:  Rs. $grandTotalStr')}) Tj');
         streamBuf.writeln('ET');
       }
 

@@ -59,95 +59,227 @@ class _SettingsScreenState extends State<SettingsScreen>
   Future<void> _showExportFormatDialog() async {
     final theme = Theme.of(context);
     final folderPath = context.read<SettingsProvider>().exportFolderPath;
-    final format = await showModalBottomSheet<String>(
+
+    // Fetch available recorded years & months from database
+    final availableYearsMap = await DatabaseHelper.instance.getAvailableExportYearsAndMonths();
+
+    if (!mounted) return;
+
+    int? selectedYear;
+    int? selectedMonth;
+
+    const monthNames = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+
+    final result = await showModalBottomSheet<Map<String, dynamic>>(
       context: context,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (ctx) => Container(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Export Data',
-              style: theme.textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setModalState) {
+          final availableYears = availableYearsMap.keys.toList();
+          final availableMonthsForYear = (selectedYear != null && availableYearsMap.containsKey(selectedYear))
+              ? availableYearsMap[selectedYear]!
+              : <int>[];
+
+          return Container(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Export Financial Data',
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Select Year & Month filter (or All)',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.7),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Dual Dropdowns Row (Year & Month)
+                Row(
+                  children: [
+                    // Year Dropdown
+                    Expanded(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: theme.dividerColor.withValues(alpha: 0.3)),
+                        ),
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<int?>(
+                            value: selectedYear,
+                            isExpanded: true,
+                            hint: const Text('All Years', style: TextStyle(fontWeight: FontWeight.bold)),
+                            style: TextStyle(
+                              color: theme.textTheme.bodyLarge?.color,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                            ),
+                            items: [
+                              const DropdownMenuItem<int?>(
+                                value: null,
+                                child: Text('All Years'),
+                              ),
+                              ...availableYears.map((y) => DropdownMenuItem<int?>(
+                                    value: y,
+                                    child: Text('Year $y'),
+                                  )),
+                            ],
+                            onChanged: (val) {
+                              setModalState(() {
+                                selectedYear = val;
+                                selectedMonth = null;
+                              });
+                            },
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+
+                    // Month Dropdown
+                    Expanded(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: selectedYear == null
+                              ? theme.disabledColor.withValues(alpha: 0.1)
+                              : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: theme.dividerColor.withValues(alpha: 0.3)),
+                        ),
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<int?>(
+                            value: selectedMonth,
+                            isExpanded: true,
+                            hint: const Text('All Months', style: TextStyle(fontWeight: FontWeight.bold)),
+                            style: TextStyle(
+                              color: theme.textTheme.bodyLarge?.color,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                            ),
+                            items: [
+                              const DropdownMenuItem<int?>(
+                                value: null,
+                                child: Text('All Months'),
+                              ),
+                              if (selectedYear != null)
+                                ...availableMonthsForYear.map((m) => DropdownMenuItem<int?>(
+                                      value: m,
+                                      child: Text(monthNames[m - 1]),
+                                    )),
+                            ],
+                            onChanged: selectedYear == null
+                                ? null
+                                : (val) {
+                                    setModalState(() {
+                                      selectedMonth = val;
+                                    });
+                                  },
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+
+                ListTile(
+                  leading: const Icon(
+                    Icons.table_chart_outlined,
+                    color: Colors.green,
+                  ),
+                  title: const Text(
+                    'Excel Spreadsheet (.xlsx)',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  subtitle: const Text('Categorized sheet with grid table'),
+                  onTap: () => Navigator.pop(ctx, {'format': 'excel', 'year': selectedYear, 'month': selectedMonth}),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(
+                    Icons.picture_as_pdf_outlined,
+                    color: Colors.red,
+                  ),
+                  title: const Text(
+                    'PDF Report (.pdf)',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  subtitle: const Text('Tabular PDF statement with grid columns'),
+                  onTap: () => Navigator.pop(ctx, {'format': 'pdf', 'year': selectedYear, 'month': selectedMonth}),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.code, color: Colors.blue),
+                  title: const Text(
+                    'CSV File (.csv)',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  subtitle: const Text('Raw CSV tabular format'),
+                  onTap: () => Navigator.pop(ctx, {'format': 'csv', 'year': selectedYear, 'month': selectedMonth}),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(
+                    Icons.integration_instructions_outlined,
+                    color: Colors.purple,
+                  ),
+                  title: const Text(
+                    'JSON Backup (.json)',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  subtitle: const Text('Complete offline database backup'),
+                  onTap: () => Navigator.pop(ctx, {'format': 'json', 'year': selectedYear, 'month': selectedMonth}),
+                ),
+              ],
             ),
-            const SizedBox(height: 4),
-            Text(
-              'Choose your preferred file export format',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.7),
-              ),
-            ),
-            const SizedBox(height: 20),
-            ListTile(
-              leading: const Icon(
-                Icons.table_chart_outlined,
-                color: Colors.green,
-              ),
-              title: const Text(
-                'Excel Spreadsheet (.xlsx)',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              subtitle: const Text('Categorized sheet with all transactions'),
-              onTap: () => Navigator.pop(ctx, 'excel'),
-            ),
-            const Divider(height: 1),
-            ListTile(
-              leading: const Icon(
-                Icons.picture_as_pdf_outlined,
-                color: Colors.red,
-              ),
-              title: const Text(
-                'PDF Report (.pdf)',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              subtitle: const Text('Formatted expense statement report'),
-              onTap: () => Navigator.pop(ctx, 'pdf'),
-            ),
-            const Divider(height: 1),
-            ListTile(
-              leading: const Icon(Icons.code, color: Colors.blue),
-              title: const Text(
-                'CSV File (.csv)',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              subtitle: const Text('Raw CSV data format'),
-              onTap: () => Navigator.pop(ctx, 'csv'),
-            ),
-            const Divider(height: 1),
-            ListTile(
-              leading: const Icon(
-                Icons.integration_instructions_outlined,
-                color: Colors.purple,
-              ),
-              title: const Text(
-                'JSON Backup (.json)',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              subtitle: const Text('Complete offline database backup'),
-              onTap: () => Navigator.pop(ctx, 'json'),
-            ),
-          ],
-        ),
+          );
+        },
       ),
     );
 
-    if (format == null) return;
+    if (result == null) return;
+
+    final format = result['format'] as String;
+    final targetYear = result['year'] as int?;
+    final targetMonth = result['month'] as int?;
 
     setState(() => _isExporting = true);
     try {
       String? path;
       if (format == 'excel') {
-        path = await ExportImportService.exportToExcel(customFolderPath: folderPath);
+        path = await ExportImportService.exportToExcel(
+          customFolderPath: folderPath,
+          targetYear: targetYear,
+          targetMonth: targetMonth,
+        );
       } else if (format == 'pdf') {
-        path = await ExportImportService.exportToPdf(customFolderPath: folderPath);
+        path = await ExportImportService.exportToPdf(
+          customFolderPath: folderPath,
+          targetYear: targetYear,
+          targetMonth: targetMonth,
+        );
       } else if (format == 'csv') {
-        path = await ExportImportService.exportToCsv(customFolderPath: folderPath);
+        path = await ExportImportService.exportToCsv(
+          customFolderPath: folderPath,
+          targetYear: targetYear,
+          targetMonth: targetMonth,
+        );
       } else if (format == 'json') {
         path = await ExportImportService.exportBackup(customFolderPath: folderPath);
       }

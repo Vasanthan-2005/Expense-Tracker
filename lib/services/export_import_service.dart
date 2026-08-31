@@ -16,10 +16,23 @@ import '../models/income.dart';
 import 'pdf_statement_builder.dart';
 
 class ExportImportService {
-  /// Exports all data to an Excel (.xlsx) file.
-  static Future<String?> exportToExcel({String? customFolderPath}) async {
+  /// Exports data to an Excel (.xlsx) file with optional year & month filtering.
+  /// Exports data to an Excel (.xlsx) file with optional year & month filtering.
+  static Future<String?> exportToExcel({
+    String? customFolderPath,
+    int? targetYear,
+    int? targetMonth,
+  }) async {
     final db = DatabaseHelper.instance;
-    final expenses = await db.getExpenses();
+    var expenses = await db.getExpenses();
+    if (targetYear != null) {
+      if (targetMonth != null) {
+        expenses = expenses.where((e) => e.date.year == targetYear && e.date.month == targetMonth).toList();
+      } else {
+        expenses = expenses.where((e) => e.date.year == targetYear).toList();
+      }
+    }
+
     final categories = await db.getCategories();
     final accounts = await db.getAccounts();
 
@@ -55,13 +68,34 @@ class ExportImportService {
     final bytes = excel.encode();
     if (bytes == null) return null;
 
-    return await _saveAndPromptFile('xlsx', bytes, customFolderPath: customFolderPath);
+    final String fileName;
+    if (targetYear != null && targetMonth != null) {
+      fileName = 'exp_${_getMonthAbbr(targetMonth)}_$targetYear.xlsx';
+    } else if (targetYear != null) {
+      fileName = 'exp_year_$targetYear.xlsx';
+    } else {
+      fileName = 'exp_all_time_${DateTime.now().year}.xlsx';
+    }
+
+    return await _saveAndPromptFile('xlsx', bytes, customFolderPath: customFolderPath, overrideFileName: fileName);
   }
 
   /// Exports data to a CSV (.csv) file.
-  static Future<String?> exportToCsv({String? customFolderPath}) async {
+  static Future<String?> exportToCsv({
+    String? customFolderPath,
+    int? targetYear,
+    int? targetMonth,
+  }) async {
     final db = DatabaseHelper.instance;
-    final expenses = await db.getExpenses();
+    var expenses = await db.getExpenses();
+    if (targetYear != null) {
+      if (targetMonth != null) {
+        expenses = expenses.where((e) => e.date.year == targetYear && e.date.month == targetMonth).toList();
+      } else {
+        expenses = expenses.where((e) => e.date.year == targetYear).toList();
+      }
+    }
+
     final categories = await db.getCategories();
     final accounts = await db.getAccounts();
 
@@ -81,13 +115,34 @@ class ExportImportService {
     }
 
     final bytes = utf8.encode(buffer.toString());
-    return await _saveAndPromptFile('csv', bytes, customFolderPath: customFolderPath);
+    final String fileName;
+    if (targetYear != null && targetMonth != null) {
+      fileName = 'exp_${_getMonthAbbr(targetMonth)}_$targetYear.csv';
+    } else if (targetYear != null) {
+      fileName = 'exp_year_$targetYear.csv';
+    } else {
+      fileName = 'exp_all_time_${DateTime.now().year}.csv';
+    }
+
+    return await _saveAndPromptFile('csv', bytes, customFolderPath: customFolderPath, overrideFileName: fileName);
   }
 
   /// Exports data to a valid PDF (.pdf) summary file.
-  static Future<String?> exportToPdf({String? customFolderPath}) async {
+  static Future<String?> exportToPdf({
+    String? customFolderPath,
+    int? targetYear,
+    int? targetMonth,
+  }) async {
     final db = DatabaseHelper.instance;
-    final expenses = await db.getExpenses();
+    var expenses = await db.getExpenses();
+    if (targetYear != null) {
+      if (targetMonth != null) {
+        expenses = expenses.where((e) => e.date.year == targetYear && e.date.month == targetMonth).toList();
+      } else {
+        expenses = expenses.where((e) => e.date.year == targetYear).toList();
+      }
+    }
+
     final categories = await db.getCategories();
     final accounts = await db.getAccounts();
 
@@ -113,13 +168,32 @@ class ExportImportService {
     }
 
     final dateNow = DateTime.now().toIso8601String().split('T').first;
+    final String subtitleText;
+    if (targetYear != null && targetMonth != null) {
+      subtitleText = '${_getMonthAbbr(targetMonth).toUpperCase()} $targetYear';
+    } else if (targetYear != null) {
+      subtitleText = 'YEAR $targetYear';
+    } else {
+      subtitleText = 'ALL TIME';
+    }
+
     final pdfBytes = PdfStatementBuilder.buildExpensePdf(
       records: records,
       grandTotalStr: grandTotal.toStringAsFixed(2),
       generatedDateStr: dateNow,
+      titleSubtitle: subtitleText,
     );
 
-    return await _saveAndPromptFile('pdf', pdfBytes, customFolderPath: customFolderPath);
+    final String fileName;
+    if (targetYear != null && targetMonth != null) {
+      fileName = 'exp_${_getMonthAbbr(targetMonth)}_$targetYear.pdf';
+    } else if (targetYear != null) {
+      fileName = 'exp_year_$targetYear.pdf';
+    } else {
+      fileName = 'exp_all_time_${DateTime.now().year}.pdf';
+    }
+
+    return await _saveAndPromptFile('pdf', pdfBytes, customFolderPath: customFolderPath, overrideFileName: fileName);
   }
 
   /// Exports all application data to a JSON file.
@@ -128,7 +202,7 @@ class ExportImportService {
     final jsonString = const JsonEncoder.withIndent('  ').convert(data);
     final bytes = utf8.encode(jsonString);
 
-    return await _saveAndPromptFile('json', bytes, customFolderPath: customFolderPath);
+    return await _saveAndPromptFile('json', bytes, customFolderPath: customFolderPath, overrideFileName: 'exp_backup_${DateTime.now().year}.json');
   }
 
   static String _getMonthAbbr(int month) {
@@ -139,7 +213,12 @@ class ExportImportService {
     return 'mon';
   }
 
-  static Future<String?> _saveAndPromptFile(String extension, List<int> bytes, {String? customFolderPath}) async {
+  static Future<String?> _saveAndPromptFile(
+    String extension,
+    List<int> bytes, {
+    String? customFolderPath,
+    String? overrideFileName,
+  }) async {
     if (kIsWeb) return null;
 
     final targetFolder = (customFolderPath != null && customFolderPath.trim().isNotEmpty)
@@ -148,7 +227,7 @@ class ExportImportService {
 
     final now = DateTime.now();
     final monthAbbr = _getMonthAbbr(now.month);
-    final fileName = 'exp_${monthAbbr}_${now.year}.$extension';
+    final fileName = overrideFileName ?? 'exp_${monthAbbr}_${now.year}.$extension';
 
     String? savedPath;
 

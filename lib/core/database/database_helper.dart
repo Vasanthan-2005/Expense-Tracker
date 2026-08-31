@@ -1058,6 +1058,73 @@ class DatabaseHelper {
     });
   }
 
+  Future<Map<int, List<int>>> getAvailableExportYearsAndMonths() async {
+    final db = await database;
+    final Map<int, Set<int>> resultMap = {};
+
+    final rows = await db.query(
+      'expenses',
+      columns: ['date'],
+      where: 'date IS NOT NULL',
+      orderBy: 'date DESC',
+    );
+
+    for (final row in rows) {
+      final dateStr = row['date'] as String?;
+      if (dateStr != null && dateStr.isNotEmpty) {
+        final parsed = DateTime.tryParse(dateStr);
+        if (parsed != null) {
+          resultMap.putIfAbsent(parsed.year, () => <int>{}).add(parsed.month);
+        }
+      }
+    }
+
+    final Map<int, List<int>> sortedResult = {};
+    final years = resultMap.keys.toList()..sort((a, b) => b.compareTo(a));
+    for (final y in years) {
+      final mList = resultMap[y]!.toList()..sort((a, b) => b.compareTo(a));
+      sortedResult[y] = mList;
+    }
+    return sortedResult;
+  }
+
+  Future<List<Map<String, dynamic>>> getAvailableExportMonths() async {
+    final db = await database;
+    final List<Map<String, dynamic>> result = [];
+    final set = <String>{};
+
+    final rows = await db.query(
+      'expenses',
+      columns: ['date'],
+      where: 'date IS NOT NULL',
+      orderBy: 'date DESC',
+    );
+
+    const months = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+
+    for (final row in rows) {
+      final dateStr = row['date'] as String?;
+      if (dateStr != null && dateStr.isNotEmpty) {
+        final parsed = DateTime.tryParse(dateStr);
+        if (parsed != null) {
+          final key = '${parsed.year}-${parsed.month}';
+          if (!set.contains(key)) {
+            set.add(key);
+            result.add({
+              'year': parsed.year,
+              'month': parsed.month,
+              'label': '${months[parsed.month - 1]} ${parsed.year}',
+            });
+          }
+        }
+      }
+    }
+    return result;
+  }
+
   Future<void> clearAllData() async {
     final db = await database;
     await db.transaction((txn) async {
