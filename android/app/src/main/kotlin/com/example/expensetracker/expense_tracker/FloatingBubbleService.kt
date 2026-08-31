@@ -209,6 +209,58 @@ class FloatingBubbleService : Service() {
         }
     }
 
+    private data class QuickExpenseColors(
+        val bgCard: Int,
+        val bgInput: Int,
+        val textPrimary: Int,
+        val textSecondary: Int,
+        val accent: Int,
+        val buttonUnselectedBg: Int,
+        val buttonUnselectedText: Int
+    )
+
+    private fun getThemeColors(themeName: String): QuickExpenseColors {
+        return when (themeName) {
+            "pitchBlack" -> QuickExpenseColors(
+                bgCard = Color.parseColor("#121212"),
+                bgInput = Color.parseColor("#1E1E1E"),
+                textPrimary = Color.parseColor("#FFFFFF"),
+                textSecondary = Color.parseColor("#A0A0A0"),
+                accent = Color.parseColor("#818CF8"),
+                buttonUnselectedBg = Color.parseColor("#1E1E1E"),
+                buttonUnselectedText = Color.parseColor("#A0A0A0")
+            )
+            "light" -> QuickExpenseColors(
+                bgCard = Color.parseColor("#FFFFFF"),
+                bgInput = Color.parseColor("#F1F5F9"),
+                textPrimary = Color.parseColor("#0F172A"),
+                textSecondary = Color.parseColor("#64748B"),
+                accent = Color.parseColor("#4F46E5"),
+                buttonUnselectedBg = Color.parseColor("#F1F5F9"),
+                buttonUnselectedText = Color.parseColor("#64748B")
+            )
+            "emerald" -> QuickExpenseColors(
+                bgCard = Color.parseColor("#022C22"),
+                bgInput = Color.parseColor("#064E3B"),
+                textPrimary = Color.parseColor("#ECFDF5"),
+                textSecondary = Color.parseColor("#6EE7B7"),
+                accent = Color.parseColor("#10B981"),
+                buttonUnselectedBg = Color.parseColor("#064E3B"),
+                buttonUnselectedText = Color.parseColor("#6EE7B7")
+            )
+            else -> // "dark"
+                QuickExpenseColors(
+                    bgCard = Color.parseColor("#1E293B"),
+                    bgInput = Color.parseColor("#0F172A"),
+                    textPrimary = Color.parseColor("#F8FAFC"),
+                    textSecondary = Color.parseColor("#94A3B8"),
+                    accent = Color.parseColor("#6366F1"),
+                    buttonUnselectedBg = Color.parseColor("#0F172A"),
+                    buttonUnselectedText = Color.parseColor("#94A3B8")
+                )
+        }
+    }
+
     private fun expandQuickExpense(bubbleY: Int) {
         if (isExpanded || quickExpenseView != null) return
         isExpanded = true
@@ -224,6 +276,8 @@ class FloatingBubbleService : Service() {
 
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val savedEdge = prefs.getString(KEY_EDGE, "right") ?: "right"
+        val savedTheme = prefs.getString("theme_option", "dark") ?: "dark"
+        val colors = getThemeColors(savedTheme)
 
         val density = resources.displayMetrics.density
         val cardWidthPx = (310 * density).toInt()
@@ -244,6 +298,14 @@ class FloatingBubbleService : Service() {
         val inflater = getSystemService(Context.LAYOUT_INFLATER_SERVICE) as LayoutInflater
         quickExpenseView = inflater.inflate(R.layout.quick_expense_layout, null)
 
+        val rootCard = quickExpenseView?.findViewById<View>(R.id.quick_expense_root)
+        val cardDrawable = android.graphics.drawable.GradientDrawable().apply {
+            shape = android.graphics.drawable.GradientDrawable.RECTANGLE
+            cornerRadius = 16 * density
+            setColor(colors.bgCard)
+        }
+        rootCard?.background = cardDrawable
+
         val etAmount = quickExpenseView?.findViewById<EditText>(R.id.et_amount)
         val etDescription = quickExpenseView?.findViewById<EditText>(R.id.et_description)
         val btnClose = quickExpenseView?.findViewById<ImageButton>(R.id.btn_close)
@@ -252,26 +314,61 @@ class FloatingBubbleService : Service() {
         val btnPaymentCash = quickExpenseView?.findViewById<Button>(R.id.btn_payment_cash)
         val container = quickExpenseView?.findViewById<LinearLayout>(R.id.category_container)
 
+        val inputDrawable1 = android.graphics.drawable.GradientDrawable().apply {
+            shape = android.graphics.drawable.GradientDrawable.RECTANGLE
+            cornerRadius = 12 * density
+            setColor(colors.bgInput)
+        }
+        val inputDrawable2 = android.graphics.drawable.GradientDrawable().apply {
+            shape = android.graphics.drawable.GradientDrawable.RECTANGLE
+            cornerRadius = 12 * density
+            setColor(colors.bgInput)
+        }
+
+        (etAmount?.parent as? View)?.background = inputDrawable1
+        (etDescription?.parent as? View)?.background = inputDrawable2
+
+        etAmount?.setTextColor(colors.textPrimary)
+        etAmount?.setHintTextColor(colors.textSecondary)
+
+        etDescription?.setTextColor(colors.textPrimary)
+        etDescription?.setHintTextColor(colors.textSecondary)
+
+        btnClose?.setColorFilter(colors.textSecondary)
+
+        val btnSaveDrawable = android.graphics.drawable.GradientDrawable().apply {
+            shape = android.graphics.drawable.GradientDrawable.RECTANGLE
+            cornerRadius = 12 * density
+            setColor(colors.accent)
+        }
+        btnSave?.background = btnSaveDrawable
+        btnSave?.setTextColor(Color.WHITE)
+
         selectedPaymentMethod = "UPI"
-        btnPaymentUpi?.backgroundTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#6366F1"))
-        btnPaymentUpi?.setTextColor(Color.WHITE)
-        btnPaymentCash?.backgroundTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#0F172A"))
-        btnPaymentCash?.setTextColor(Color.parseColor("#94A3B8"))
+
+        fun updatePaymentButtons() {
+            if (selectedPaymentMethod == "UPI") {
+                btnPaymentUpi?.backgroundTintList = android.content.res.ColorStateList.valueOf(colors.accent)
+                btnPaymentUpi?.setTextColor(Color.WHITE)
+                btnPaymentCash?.backgroundTintList = android.content.res.ColorStateList.valueOf(colors.buttonUnselectedBg)
+                btnPaymentCash?.setTextColor(colors.buttonUnselectedText)
+            } else {
+                btnPaymentCash?.backgroundTintList = android.content.res.ColorStateList.valueOf(colors.accent)
+                btnPaymentCash?.setTextColor(Color.WHITE)
+                btnPaymentUpi?.backgroundTintList = android.content.res.ColorStateList.valueOf(colors.buttonUnselectedBg)
+                btnPaymentUpi?.setTextColor(colors.buttonUnselectedText)
+            }
+        }
+        updatePaymentButtons()
 
         btnPaymentUpi?.setOnClickListener {
             selectedPaymentMethod = "UPI"
-            btnPaymentUpi.backgroundTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#6366F1"))
-            btnPaymentUpi.setTextColor(Color.WHITE)
-            btnPaymentCash?.backgroundTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#0F172A"))
-            btnPaymentCash?.setTextColor(Color.parseColor("#94A3B8"))
+            updatePaymentButtons()
         }
 
         btnPaymentCash?.setOnClickListener {
             selectedPaymentMethod = "Cash"
-            btnPaymentCash.backgroundTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#6366F1"))
-            btnPaymentCash.setTextColor(Color.WHITE)
-            btnPaymentUpi?.backgroundTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#0F172A"))
-            btnPaymentUpi?.setTextColor(Color.parseColor("#94A3B8"))
+            updatePaymentButtons()
         }
 
         val activeCategories = loadActiveCategoriesFromDb()
@@ -313,11 +410,11 @@ class FloatingBubbleService : Service() {
                 }
 
                 if (catName == selectedCategoryName) {
-                    btn.setBackgroundColor(Color.parseColor("#6366F1"))
+                    btn.setBackgroundColor(colors.accent)
                     btn.setTextColor(Color.WHITE)
                 } else {
-                    btn.setBackgroundColor(Color.parseColor("#0F172A"))
-                    btn.setTextColor(Color.parseColor("#94A3B8"))
+                    btn.setBackgroundColor(colors.buttonUnselectedBg)
+                    btn.setTextColor(colors.buttonUnselectedText)
                 }
 
                 allCategoryButtons.add(Triple(btn, catId, catName))
@@ -327,11 +424,11 @@ class FloatingBubbleService : Service() {
                     selectedCategoryId = catId
                     allCategoryButtons.forEach { (b, _, cName) ->
                         if (cName == selectedCategoryName) {
-                            b.setBackgroundColor(Color.parseColor("#6366F1"))
+                            b.setBackgroundColor(colors.accent)
                             b.setTextColor(Color.WHITE)
                         } else {
-                            b.setBackgroundColor(Color.parseColor("#0F172A"))
-                            b.setTextColor(Color.parseColor("#94A3B8"))
+                            b.setBackgroundColor(colors.buttonUnselectedBg)
+                            b.setTextColor(colors.buttonUnselectedText)
                         }
                     }
                 }

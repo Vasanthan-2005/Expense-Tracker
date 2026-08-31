@@ -58,6 +58,12 @@ class MainActivity : FlutterActivity() {
                 "isBubbleRunning" -> {
                     result.success(FloatingBubbleService.isRunning)
                 }
+                "updateTheme" -> {
+                    val themeName = call.argument<String>("theme") ?: "dark"
+                    val prefs = getSharedPreferences("bubble_prefs", Context.MODE_PRIVATE)
+                    prefs.edit().putString("theme_option", themeName).apply()
+                    result.success(true)
+                }
                 else -> {
                     result.notImplemented()
                 }

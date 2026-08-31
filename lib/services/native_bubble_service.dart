@@ -59,6 +59,15 @@ class NativeBubbleService {
     }
   }
 
+  static Future<void> updateTheme(String themeOption) async {
+    if (kIsWeb || !Platform.isAndroid) return;
+    try {
+      await _channel.invokeMethod('updateTheme', {'theme': themeOption});
+    } catch (e) {
+      debugPrint('Error updating native bubble theme: $e');
+    }
+  }
+
   static void initializeListener(VoidCallback onExpenseAdded) {
     if (kIsWeb || !Platform.isAndroid) return;
     _channel.setMethodCallHandler((call) async {

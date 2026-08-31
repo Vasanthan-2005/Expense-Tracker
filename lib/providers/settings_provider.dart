@@ -41,6 +41,7 @@ class SettingsProvider with ChangeNotifier {
 
     try {
       _settings = await DatabaseHelper.instance.getSettings();
+      await NativeBubbleService.updateTheme(_settings.themeOption.name);
       if (_settings.isFloatingBubbleEnabled) {
         final granted = await NativeBubbleService.checkPermission();
         if (granted) {
@@ -68,6 +69,7 @@ class SettingsProvider with ChangeNotifier {
     _settings = _settings.copyWith(themeOption: option);
     notifyListeners();
     await DatabaseHelper.instance.updateSetting('theme_mode', option.name);
+    await NativeBubbleService.updateTheme(option.name);
   }
 
   Future<void> setCurrencySymbol(String symbol) async {
