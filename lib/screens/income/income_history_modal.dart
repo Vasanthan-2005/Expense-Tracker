@@ -9,27 +9,25 @@ import '../../core/utils/date_formatter.dart';
 import '../../widgets/empty_state.dart';
 import 'add_edit_income_modal.dart';
 
-class IncomeHistoryModal extends StatefulWidget {
-  const IncomeHistoryModal({super.key});
+class IncomeHistoryScreen extends StatefulWidget {
+  const IncomeHistoryScreen({super.key});
 
   static Future<void> show(BuildContext context) async {
-    await showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (ctx) => const IncomeHistoryScreen(),
       ),
-      builder: (ctx) => const IncomeHistoryModal(),
     );
   }
 
   @override
-  State<IncomeHistoryModal> createState() => _IncomeHistoryModalState();
+  State<IncomeHistoryScreen> createState() => _IncomeHistoryScreenState();
 }
 
-class _IncomeHistoryModalState extends State<IncomeHistoryModal> {
+typedef IncomeHistoryModal = IncomeHistoryScreen;
+
+class _IncomeHistoryScreenState extends State<IncomeHistoryScreen> {
   final TextEditingController _searchController = TextEditingController();
 
   static const _monthNames = [
@@ -62,64 +60,22 @@ class _IncomeHistoryModalState extends State<IncomeHistoryModal> {
     final totalIncomePaise = accountProvider.monthlyTotalIncomePaise;
     final accountBreakdown = accountProvider.accountIncomeBreakdown;
 
-    return DraggableScrollableSheet(
-      initialChildSize: 0.9,
-      minChildSize: 0.5,
-      maxChildSize: 0.95,
-      expand: false,
-      builder: (ctx, scrollController) {
-        return Column(
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Monthly Income History'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.add),
+            tooltip: 'Add Income',
+            onPressed: () => AddEditIncomeScreen.show(context),
+          ),
+        ],
+      ),
+      body: SafeArea(
+        child: Column(
           children: [
-            // Modal Handle & Header
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 12, 16, 8),
-              child: Column(
-                children: [
-                  Center(
-                    child: Container(
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: theme.dividerColor,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF10B981).withValues(alpha: 0.15),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: const Icon(Icons.receipt_long_rounded, color: Color(0xFF10B981), size: 22),
-                          ),
-                          const SizedBox(width: 10),
-                          Text(
-                            'Monthly Income History',
-                            style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold, fontSize: 19),
-                          ),
-                        ],
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.close),
-                        onPressed: () => Navigator.pop(context),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            const Divider(height: 1),
-
             Expanded(
               child: ListView(
-                controller: scrollController,
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 80),
                 children: [
                   // Month Switcher Bar
@@ -141,41 +97,19 @@ class _IncomeHistoryModalState extends State<IncomeHistoryModal> {
                           onPressed: () => accountProvider.previousIncomeMonth(),
                           tooltip: 'Previous Month',
                         ),
-                        Expanded(
-                          child: GestureDetector(
-                            onTap: () async {
-                              final picked = await showDatePicker(
-                                context: context,
-                                initialDate: selMonth,
-                                firstDate: DateTime(2020),
-                                lastDate: DateTime.now(),
-                              );
-                              if (picked != null) {
-                                accountProvider.setSelectedIncomeMonth(picked);
-                              }
-                            },
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(Icons.calendar_today_rounded, size: 14, color: Color(0xFF10B981)),
-                                const SizedBox(width: 6),
-                                Flexible(
-                                  child: Text(
-                                    '$monthName ${selMonth.year}',
-                                    style: theme.textTheme.titleSmall?.copyWith(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 13,
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                                const SizedBox(width: 2),
-                                const Icon(Icons.arrow_drop_down_rounded, size: 18),
-                              ],
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.calendar_today_rounded, size: 14, color: theme.colorScheme.primary),
+                            const SizedBox(width: 6),
+                            Text(
+                              '$monthName ${selMonth.year}',
+                              style: theme.textTheme.titleSmall?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                              ),
                             ),
-                          ),
+                          ],
                         ),
                         IconButton(
                           icon: Icon(
@@ -191,109 +125,107 @@ class _IncomeHistoryModalState extends State<IncomeHistoryModal> {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 12),
 
                   // Monthly Total Income Hero Card
                   Container(
                     width: double.infinity,
-                    padding: const EdgeInsets.all(18),
+                    padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
                       gradient: const LinearGradient(
                         colors: [Color(0xFF10B981), Color(0xFF059669)],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                       ),
-                      borderRadius: BorderRadius.circular(22),
+                      borderRadius: BorderRadius.circular(20),
                       boxShadow: [
                         BoxShadow(
                           color: const Color(0xFF10B981).withValues(alpha: 0.3),
-                          blurRadius: 16,
-                          offset: const Offset(0, 6),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
                         ),
                       ],
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'TOTAL INCOME IN ${monthName.toUpperCase()}',
-                              style: const TextStyle(
-                                color: Colors.white70,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: 1.1,
-                              ),
+                              'TOTAL RECEIVED IN $monthName'.toUpperCase(),
+                              style: const TextStyle(color: Colors.white70, fontSize: 10.5, fontWeight: FontWeight.bold, letterSpacing: 1.1),
                             ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: Colors.white24,
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: Text(
-                                '${incomes.length} ${incomes.length == 1 ? 'entry' : 'entries'}',
-                                style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
-                              ),
+                            const SizedBox(height: 4),
+                            Text(
+                              '+${CurrencyFormatter.formatPaise(totalIncomePaise, symbol: currency)}',
+                              style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w800),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              '${incomes.length} transaction${incomes.length == 1 ? '' : 's'} recorded',
+                              style: const TextStyle(color: Colors.white70, fontSize: 11),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 10),
-                        Text(
-                          '+${CurrencyFormatter.formatPaise(totalIncomePaise, symbol: currency)}',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 32,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: -0.5,
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: const BoxDecoration(
+                            color: Colors.white24,
+                            shape: BoxShape.circle,
                           ),
+                          child: const Icon(Icons.arrow_downward_rounded, color: Colors.white, size: 26),
                         ),
-
-                        // Account breakdown chips
-                        if (accountBreakdown.isNotEmpty) ...[
-                          const SizedBox(height: 12),
-                          const Divider(color: Colors.white24, height: 1),
-                          const SizedBox(height: 10),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 6,
-                            children: accountBreakdown.entries.map((e) {
-                              final acc = accountMap[e.key];
-                              if (acc == null) return const SizedBox.shrink();
-                              return Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withValues(alpha: 0.18),
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(acc.iconData, color: Colors.white, size: 12),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      '${acc.name}: ${CurrencyFormatter.formatPaise(e.value, symbol: currency)}',
-                                      style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600),
-                                    ),
-                                  ],
-                                ),
-                              );
-                            }).toList(),
-                          ),
-                        ],
                       ],
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 14),
 
-                  // Search Bar
+                  // Account Breakdown Chips (if more than 1 account received income)
+                  if (accountBreakdown.isNotEmpty) ...[
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          FilterChip(
+                            selected: accountProvider.incomeFilterAccountId == null,
+                            label: const Text('All Accounts', style: TextStyle(fontSize: 12)),
+                            onSelected: (_) => accountProvider.setIncomeFilterAccountId(null),
+                          ),
+                          const SizedBox(width: 8),
+                          ...accountBreakdown.entries.map((entry) {
+                            final acc = accountMap[entry.key];
+                            if (acc == null) return const SizedBox.shrink();
+                            final isSelected = accountProvider.incomeFilterAccountId == acc.id;
+                            return Padding(
+                              padding: const EdgeInsets.only(right: 8),
+                              child: FilterChip(
+                                selected: isSelected,
+                                avatar: Icon(acc.iconData, size: 14, color: Color(acc.colorValue)),
+                                label: Text(
+                                  '${acc.name}: +${CurrencyFormatter.formatPaise(entry.value, symbol: currency)}',
+                                  style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600),
+                                ),
+                                onSelected: (_) {
+                                  accountProvider.setIncomeFilterAccountId(isSelected ? null : acc.id);
+                                },
+                              ),
+                            );
+                          }),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+
+                  // Search Field
                   TextField(
                     controller: _searchController,
                     decoration: InputDecoration(
-                      hintText: 'Search income source or notes...',
+                      hintText: 'Search incomes by note or source...',
                       prefixIcon: const Icon(Icons.search, size: 20),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                       suffixIcon: _searchController.text.isNotEmpty
                           ? IconButton(
                               icon: const Icon(Icons.clear, size: 18),
@@ -303,57 +235,18 @@ class _IncomeHistoryModalState extends State<IncomeHistoryModal> {
                               },
                             )
                           : null,
-                      contentPadding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
                     ),
-                    onChanged: (val) {
-                      accountProvider.setIncomeSearchQuery(val);
-                    },
+                    onChanged: (val) => accountProvider.setIncomeSearchQuery(val),
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 14),
 
-                  // Account Filter Chips
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.only(right: 6),
-                          child: FilterChip(
-                            label: const Text('All Accounts'),
-                            selected: accountProvider.incomeFilterAccountId == null,
-                            onSelected: (selected) {
-                              accountProvider.setIncomeFilterAccountId(null);
-                            },
-                          ),
-                        ),
-                        ...accounts.map((acc) {
-                          final isSelected = accountProvider.incomeFilterAccountId == acc.id;
-                          final accColor = Color(acc.colorValue);
-                          return Padding(
-                            padding: const EdgeInsets.only(right: 6),
-                            child: FilterChip(
-                              avatar: Icon(acc.iconData, size: 14, color: isSelected ? Colors.white : accColor),
-                              label: Text(acc.name),
-                              selected: isSelected,
-                              onSelected: (selected) {
-                                accountProvider.setIncomeFilterAccountId(selected ? acc.id : null);
-                              },
-                            ),
-                          );
-                        }),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Income Entries List
+                  // Income Items List
                   if (incomes.isEmpty)
                     EmptyStateWidget(
-                      title: 'No Income for $monthName',
-                      description: 'No income entries found for $monthName ${selMonth.year}. Tap below to log income.',
+                      title: 'No Income in $monthName',
+                      description: 'Tap "+ Add Income" to record income received into your accounts.',
                       actionLabel: 'Add Income',
-                      onAction: () => AddEditIncomeModal.show(context),
+                      onAction: () => AddEditIncomeScreen.show(context),
                     )
                   else
                     ListView.separated(
@@ -363,8 +256,8 @@ class _IncomeHistoryModalState extends State<IncomeHistoryModal> {
                       separatorBuilder: (ctx, i) => const SizedBox(height: 8),
                       itemBuilder: (ctx, idx) {
                         final income = incomes[idx];
-                        final targetAccount = accountMap[income.accountId];
-                        final accColor = targetAccount != null ? Color(targetAccount.colorValue) : const Color(0xFF10B981);
+                        final acc = accountMap[income.accountId];
+                        final accColor = acc != null ? Color(acc.colorValue) : const Color(0xFF10B981);
 
                         return Card(
                           elevation: 1,
@@ -375,87 +268,94 @@ class _IncomeHistoryModalState extends State<IncomeHistoryModal> {
                               width: 44,
                               height: 44,
                               decoration: BoxDecoration(
-                                color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                                color: accColor.withValues(alpha: 0.15),
                                 borderRadius: BorderRadius.circular(12),
                               ),
-                              child: const Icon(Icons.payments_outlined, color: Color(0xFF10B981), size: 22),
+                              child: Icon(acc?.iconData ?? Icons.account_balance_wallet, color: accColor, size: 22),
                             ),
-                            title: Text(
-                              income.sourceOrNote?.isNotEmpty == true ? income.sourceOrNote! : 'Income',
-                              style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, fontSize: 14),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                            title: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    income.sourceOrNote?.isNotEmpty == true ? income.sourceOrNote! : 'Income Received',
+                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                Text(
+                                  '+${CurrencyFormatter.formatPaise(income.amountMinorUnits, symbol: currency)}',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 15,
+                                    color: Color(0xFF10B981),
+                                  ),
+                                ),
+                              ],
                             ),
                             subtitle: Padding(
                               padding: const EdgeInsets.only(top: 4),
                               child: Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
-                                  Text(
-                                    "${DateFormatter.formatRelativeDate(income.date)} • ${income.timeString}",
-                                    style: theme.textTheme.bodySmall?.copyWith(fontSize: 11),
+                                  Row(
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: accColor.withValues(alpha: 0.15),
+                                          borderRadius: BorderRadius.circular(6),
+                                        ),
+                                        child: Text(
+                                          acc?.name ?? 'Account',
+                                          style: TextStyle(color: accColor, fontSize: 10, fontWeight: FontWeight.bold),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        "${DateFormatter.formatRelativeDate(income.date)} • ${income.timeString}",
+                                        style: theme.textTheme.bodySmall?.copyWith(fontSize: 11),
+                                      ),
+                                    ],
                                   ),
-                                  if (targetAccount != null) ...[
-                                    const SizedBox(width: 8),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        color: accColor.withValues(alpha: 0.15),
-                                        borderRadius: BorderRadius.circular(8),
+                                  PopupMenuButton<String>(
+                                    icon: const Icon(Icons.more_vert, size: 18, color: Colors.grey),
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(),
+                                    onSelected: (action) {
+                                      if (action == 'edit') {
+                                        AddEditIncomeScreen.show(context, existingIncome: income);
+                                      } else if (action == 'delete') {
+                                        _confirmDeleteIncome(context, income);
+                                      }
+                                    },
+                                    itemBuilder: (ctx) => [
+                                      const PopupMenuItem(
+                                        value: 'edit',
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.edit_outlined, size: 18),
+                                            SizedBox(width: 8),
+                                            Text('Edit'),
+                                          ],
+                                        ),
                                       ),
-                                      child: Text(
-                                        targetAccount.name,
-                                        style: TextStyle(color: accColor, fontSize: 10, fontWeight: FontWeight.bold),
+                                      PopupMenuItem(
+                                        value: 'delete',
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.delete_outline, color: theme.colorScheme.error, size: 18),
+                                            const SizedBox(width: 8),
+                                            Text('Delete', style: TextStyle(color: theme.colorScheme.error)),
+                                          ],
+                                        ),
                                       ),
-                                    ),
-                                  ],
+                                    ],
+                                  ),
                                 ],
                               ),
                             ),
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  '+${CurrencyFormatter.formatPaise(income.amountMinorUnits, symbol: currency)}',
-                                  style: const TextStyle(
-                                    color: Color(0xFF10B981),
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 16,
-                                  ),
-                                ),
-                                PopupMenuButton<String>(
-                                  onSelected: (val) async {
-                                    if (val == 'edit') {
-                                      AddEditIncomeModal.show(context, existingIncome: income);
-                                    } else if (val == 'delete') {
-                                      _confirmDeleteIncome(context, income);
-                                    }
-                                  },
-                                  itemBuilder: (ctx) => [
-                                    const PopupMenuItem(
-                                      value: 'edit',
-                                      child: Row(
-                                        children: [
-                                          Icon(Icons.edit_outlined, size: 18),
-                                          SizedBox(width: 8),
-                                          Text('Edit Income'),
-                                        ],
-                                      ),
-                                    ),
-                                    PopupMenuItem(
-                                      value: 'delete',
-                                      child: Row(
-                                        children: [
-                                          Icon(Icons.delete_outline, color: theme.colorScheme.error, size: 18),
-                                          const SizedBox(width: 8),
-                                          Text('Delete Income', style: TextStyle(color: theme.colorScheme.error)),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                            onTap: () => AddEditIncomeModal.show(context, existingIncome: income),
+                            onTap: () => AddEditIncomeScreen.show(context, existingIncome: income),
                           ),
                         );
                       },
@@ -464,8 +364,8 @@ class _IncomeHistoryModalState extends State<IncomeHistoryModal> {
               ),
             ),
           ],
-        );
-      },
+        ),
+      ),
     );
   }
 

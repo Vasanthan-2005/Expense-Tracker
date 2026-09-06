@@ -9,19 +9,15 @@ import '../../core/utils/date_formatter.dart';
 import '../../widgets/empty_state.dart';
 import 'transfer_money_modal.dart';
 
-class TransferHistoryModal extends StatelessWidget {
-  const TransferHistoryModal({super.key});
+class TransferHistoryScreen extends StatelessWidget {
+  const TransferHistoryScreen({super.key});
 
   static Future<void> show(BuildContext context) async {
-    await showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (ctx) => const TransferHistoryScreen(),
       ),
-      builder: (ctx) => const TransferHistoryModal(),
     );
   }
 
@@ -36,138 +32,90 @@ class TransferHistoryModal extends StatelessWidget {
     final accounts = accountProvider.accounts;
     final accountMap = {for (var a in accounts) a.id!: a};
 
-    return DraggableScrollableSheet(
-      initialChildSize: 0.8,
-      minChildSize: 0.4,
-      maxChildSize: 0.95,
-      expand: false,
-      builder: (ctx, scrollController) {
-        return Column(
-          children: [
-            // Modal Handle & Header
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 12, 16, 8),
-              child: Column(
-                children: [
-                  Center(
-                    child: Container(
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: theme.dividerColor,
-                        borderRadius: BorderRadius.circular(2),
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Transfer History'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.add),
+            tooltip: 'New Transfer',
+            onPressed: () => TransferMoneyScreen.show(context),
+          ),
+        ],
+      ),
+      body: SafeArea(
+        child: transfers.isEmpty
+            ? Center(
+                child: EmptyStateWidget(
+                  title: 'No Transfers Recorded',
+                  description: 'Transfer money between your accounts (e.g. Bank to Cash).',
+                  actionLabel: 'Transfer Money',
+                  onAction: () => TransferMoneyScreen.show(context),
+                ),
+              )
+            : ListView.separated(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
+                itemCount: transfers.length,
+                separatorBuilder: (ctx, i) => const SizedBox(height: 8),
+                itemBuilder: (ctx, idx) {
+                  final tr = transfers[idx];
+                  final fromAcc = accountMap[tr.fromAccountId];
+                  final toAcc = accountMap[tr.toAccountId];
+
+                  return Card(
+                    elevation: 1,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    child: ListTile(
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                      leading: Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF6366F1).withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(Icons.swap_horiz, color: Color(0xFF6366F1), size: 24),
                       ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Row(
+                      title: Row(
                         children: [
-                          Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF6366F1).withValues(alpha: 0.15),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: const Icon(Icons.swap_horiz_rounded, color: Color(0xFF6366F1), size: 22),
+                          Text(fromAcc?.name ?? 'Account', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                          const Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 4),
+                            child: Icon(Icons.arrow_forward_rounded, size: 14, color: Colors.grey),
                           ),
-                          const SizedBox(width: 10),
+                          Text(toAcc?.name ?? 'Account', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                        ],
+                      ),
+                      subtitle: Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          "${DateFormatter.formatRelativeDate(tr.date)} • ${tr.timeString}${tr.note?.isNotEmpty == true ? ' • ${tr.note}' : ''}",
+                          style: theme.textTheme.bodySmall?.copyWith(fontSize: 11),
+                        ),
+                      ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
                           Text(
-                            'Transfer History',
-                            style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold, fontSize: 19),
+                            CurrencyFormatter.formatPaise(tr.amountMinorUnits, symbol: currency),
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                              color: Color(0xFF6366F1),
+                            ),
+                          ),
+                          IconButton(
+                            icon: Icon(Icons.delete_outline, size: 18, color: theme.colorScheme.error),
+                            tooltip: 'Delete Transfer',
+                            onPressed: () => _confirmDeleteTransfer(context, tr),
                           ),
                         ],
                       ),
-                      IconButton(
-                        icon: const Icon(Icons.close),
-                        onPressed: () => Navigator.pop(context),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            const Divider(height: 1),
-
-            Expanded(
-              child: transfers.isEmpty
-                  ? Center(
-                      child: EmptyStateWidget(
-                        title: 'No Transfers Recorded',
-                        description: 'Transfer money between your accounts (e.g. Bank to Cash).',
-                        actionLabel: 'Transfer Money',
-                        onAction: () => TransferMoneyModal.show(context),
-                      ),
-                    )
-                  : ListView.separated(
-                      controller: scrollController,
-                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
-                      itemCount: transfers.length,
-                      separatorBuilder: (ctx, i) => const SizedBox(height: 8),
-                      itemBuilder: (ctx, idx) {
-                        final tr = transfers[idx];
-                        final fromAcc = accountMap[tr.fromAccountId];
-                        final toAcc = accountMap[tr.toAccountId];
-
-                        return Card(
-                          elevation: 1,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                          child: ListTile(
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                            leading: Container(
-                              width: 44,
-                              height: 44,
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF6366F1).withValues(alpha: 0.15),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: const Icon(Icons.swap_horiz, color: Color(0xFF6366F1), size: 24),
-                            ),
-                            title: Row(
-                              children: [
-                                Text(fromAcc?.name ?? 'Account', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                                const Padding(
-                                  padding: EdgeInsets.symmetric(horizontal: 4),
-                                  child: Icon(Icons.arrow_forward_rounded, size: 14, color: Colors.grey),
-                                ),
-                                Text(toAcc?.name ?? 'Account', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                              ],
-                            ),
-                            subtitle: Padding(
-                              padding: const EdgeInsets.only(top: 4),
-                              child: Text(
-                                "${DateFormatter.formatRelativeDate(tr.date)} • ${tr.timeString}${tr.note?.isNotEmpty == true ? ' • ${tr.note}' : ''}",
-                                style: theme.textTheme.bodySmall?.copyWith(fontSize: 11),
-                              ),
-                            ),
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  CurrencyFormatter.formatPaise(tr.amountMinorUnits, symbol: currency),
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 15,
-                                    color: Color(0xFF6366F1),
-                                  ),
-                                ),
-                                IconButton(
-                                  icon: Icon(Icons.delete_outline, size: 18, color: theme.colorScheme.error),
-                                  tooltip: 'Delete Transfer',
-                                  onPressed: () => _confirmDeleteTransfer(context, tr),
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
                     ),
-            ),
-          ],
-        );
-      },
+                  );
+                },
+              ),
+      ),
     );
   }
 
@@ -204,3 +152,5 @@ class TransferHistoryModal extends StatelessWidget {
     }
   }
 }
+
+typedef TransferHistoryModal = TransferHistoryScreen;

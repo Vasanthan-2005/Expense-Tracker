@@ -417,6 +417,35 @@ class DatabaseHelper {
     return balanceMap;
   }
 
+  /// Calculates the historical closing balance for every account as of the end of a specific month.
+  /// Balance = opening_balance + sum(incomes <= endOfMonth) - sum(expenses <= endOfMonth) + sum(transfers_in <= endOfMonth) - sum(transfers_out <= endOfMonth)
+  Future<Map<int, int>> getAccountClosingBalancesForMonth(int year, int month) async {
+    final db = await database;
+    final yearStr = year.toString().padLeft(4, '0');
+    final monthStr = month.toString().padLeft(2, '0');
+    final lastDay = DateTime(year, month + 1, 0).day.toString().padLeft(2, '0');
+    final endIso = '$yearStr-$monthStr-$lastDay';
+
+    final res = await db.rawQuery('''
+      SELECT 
+        a.id,
+        a.opening_balance 
+        + COALESCE((SELECT SUM(amount) FROM incomes WHERE account_id = a.id AND date <= ?), 0)
+        - COALESCE((SELECT SUM(amount) FROM expenses WHERE account_id = a.id AND date <= ?), 0)
+        + COALESCE((SELECT SUM(amount) FROM transfers WHERE to_account_id = a.id AND date <= ?), 0)
+        - COALESCE((SELECT SUM(amount) FROM transfers WHERE from_account_id = a.id AND date <= ?), 0) AS calculated_balance
+      FROM accounts a
+    ''', [endIso, endIso, endIso, endIso]);
+
+    final Map<int, int> balanceMap = {};
+    for (final row in res) {
+      final id = row['id'] as int;
+      final bal = (row['calculated_balance'] as int?) ?? 0;
+      balanceMap[id] = bal;
+    }
+    return balanceMap;
+  }
+
   // --- EXPENSE CRUD ---
 
   Future<int> insertExpense(Expense expense) async {

@@ -6,29 +6,27 @@ import '../../providers/account_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../core/utils/date_formatter.dart';
 
-class AddEditIncomeModal extends StatefulWidget {
+class AddEditIncomeScreen extends StatefulWidget {
   final Income? existingIncome;
 
-  const AddEditIncomeModal({super.key, this.existingIncome});
+  const AddEditIncomeScreen({super.key, this.existingIncome});
 
   static Future<void> show(BuildContext context, {Income? existingIncome}) async {
-    await showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (ctx) => AddEditIncomeScreen(existingIncome: existingIncome),
       ),
-      builder: (ctx) => AddEditIncomeModal(existingIncome: existingIncome),
     );
   }
 
   @override
-  State<AddEditIncomeModal> createState() => _AddEditIncomeModalState();
+  State<AddEditIncomeScreen> createState() => _AddEditIncomeScreenState();
 }
 
-class _AddEditIncomeModalState extends State<AddEditIncomeModal> {
+typedef AddEditIncomeModal = AddEditIncomeScreen;
+
+class _AddEditIncomeScreenState extends State<AddEditIncomeScreen> {
   final _amountController = TextEditingController();
   final _noteController = TextEditingController();
   final FocusNode _amountFocusNode = FocusNode();
@@ -58,9 +56,9 @@ class _AddEditIncomeModalState extends State<AddEditIncomeModal> {
       });
     }
 
-    // Explicitly request focus after bottom sheet animation to ensure keyboard always opens
+    // Explicitly request focus after transition
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      Future.delayed(const Duration(milliseconds: 150), () {
+      Future.delayed(const Duration(milliseconds: 200), () {
         if (mounted) {
           _amountFocusNode.requestFocus();
         }
@@ -161,179 +159,148 @@ class _AddEditIncomeModalState extends State<AddEditIncomeModal> {
     final settings = context.watch<SettingsProvider>();
     final accounts = context.watch<AccountProvider>().accounts;
 
-    return Padding(
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom,
-        left: 20,
-        right: 20,
-        top: 20,
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.existingIncome == null ? 'Add Income' : 'Edit Income'),
       ),
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Header
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF10B981).withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Icon(Icons.arrow_downward_rounded, color: Color(0xFF10B981), size: 22),
-                    ),
-                    const SizedBox(width: 12),
-                    Text(
-                      widget.existingIncome == null ? 'Add Income' : 'Edit Income',
-                      style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
-                    ),
-                  ],
-                ),
-                IconButton(
-                  onPressed: () => Navigator.pop(context),
-                  icon: const Icon(Icons.close),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-
-            // Amount Input Card
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                color: const Color(0xFF10B981).withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.3)),
-              ),
-              child: Row(
-                children: [
-                  Text(
-                    settings.currencySymbol,
-                    style: theme.textTheme.headlineMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: const Color(0xFF10B981),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: TextField(
-                      controller: _amountController,
-                      focusNode: _amountFocusNode,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      autofocus: widget.existingIncome == null,
-                      style: theme.textTheme.headlineLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: const Color(0xFF10B981),
-                      ),
-                      decoration: const InputDecoration(
-                        hintText: '0.00',
-                        border: InputBorder.none,
-                        focusedBorder: InputBorder.none,
-                        enabledBorder: InputBorder.none,
-                        fillColor: Colors.transparent,
-                        contentPadding: EdgeInsets.zero,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 20),
-
-            // Target Account Dropdown
-            DropdownButtonFormField<int>(
-              initialValue: _selectedAccountId,
-              decoration: InputDecoration(
-                labelText: 'Target Account',
-                prefixIcon: const Icon(Icons.account_balance),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
-              ),
-              items: accounts.map((acc) {
-                return DropdownMenuItem<int>(
-                  value: acc.id,
-                  child: Row(
-                    children: [
-                      Icon(acc.iconData, size: 20, color: Color(acc.colorValue)),
-                      const SizedBox(width: 10),
-                      Text(acc.name, style: const TextStyle(fontWeight: FontWeight.w600)),
-                    ],
-                  ),
-                );
-              }).toList(),
-              onChanged: (val) {
-                if (val != null) {
-                  setState(() {
-                    _selectedAccountId = val;
-                  });
-                }
-              },
-            ),
-            const SizedBox(height: 20),
-
-            // Source / Description Input
-            TextField(
-              controller: _noteController,
-              decoration: const InputDecoration(
-                labelText: 'Income Source / Description',
-                hintText: 'Salary, Freelance payout, Dividend...',
-                prefixIcon: Icon(Icons.description_outlined),
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // Date Picker Field
-            InkWell(
-              onTap: _pickDate,
-              borderRadius: BorderRadius.circular(12),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Amount Input Card
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                 decoration: BoxDecoration(
-                  border: Border.all(color: theme.dividerColor),
-                  borderRadius: BorderRadius.circular(12),
+                  color: const Color(0xFF10B981).withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.3)),
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.calendar_today, size: 18),
-                    const SizedBox(width: 12),
                     Text(
-                      DateFormatter.formatRelativeDate(_selectedDate),
-                      style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                      settings.currencySymbol,
+                      style: theme.textTheme.headlineMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: const Color(0xFF10B981),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: TextField(
+                        controller: _amountController,
+                        focusNode: _amountFocusNode,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        autofocus: widget.existingIncome == null,
+                        style: theme.textTheme.headlineLarge?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: const Color(0xFF10B981),
+                        ),
+                        decoration: const InputDecoration(
+                          hintText: '0.00',
+                          border: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          fillColor: Colors.transparent,
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                      ),
                     ),
                   ],
                 ),
               ),
-            ),
-            const SizedBox(height: 24),
+              const SizedBox(height: 20),
 
-            // Save Button
-            SizedBox(
-              width: double.infinity,
-              height: 52,
-              child: FilledButton(
-                onPressed: _isSaving ? null : _saveIncome,
-                style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFF10B981),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              // Target Account Dropdown
+              DropdownButtonFormField<int>(
+                initialValue: _selectedAccountId,
+                decoration: InputDecoration(
+                  labelText: 'Target Account',
+                  prefixIcon: const Icon(Icons.account_balance),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
                 ),
-                child: _isSaving
-                    ? const SizedBox(
-                        width: 24,
-                        height: 24,
-                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
-                      )
-                    : Text(
-                        widget.existingIncome == null ? 'Save Income' : 'Update Income',
-                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                      ),
+                items: accounts.map((acc) {
+                  return DropdownMenuItem<int>(
+                    value: acc.id,
+                    child: Row(
+                      children: [
+                        Icon(acc.iconData, size: 20, color: Color(acc.colorValue)),
+                        const SizedBox(width: 10),
+                        Text(acc.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+                      ],
+                    ),
+                  );
+                }).toList(),
+                onChanged: (val) {
+                  if (val != null) {
+                    setState(() {
+                      _selectedAccountId = val;
+                    });
+                  }
+                },
               ),
-            ),
-            const SizedBox(height: 20),
-          ],
+              const SizedBox(height: 20),
+
+              // Source / Description Input
+              TextField(
+                controller: _noteController,
+                decoration: const InputDecoration(
+                  labelText: 'Income Source / Description',
+                  hintText: 'Salary, Freelance payout, Dividend...',
+                  prefixIcon: Icon(Icons.description_outlined),
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // Date Picker Field
+              InkWell(
+                onTap: _pickDate,
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: theme.dividerColor),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.calendar_today, size: 18),
+                      const SizedBox(width: 12),
+                      Text(
+                        DateFormatter.formatRelativeDate(_selectedDate),
+                        style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 28),
+
+              // Save Button
+              SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: FilledButton(
+                  onPressed: _isSaving ? null : _saveIncome,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF10B981),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  ),
+                  child: _isSaving
+                      ? const SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
+                        )
+                      : Text(
+                          widget.existingIncome == null ? 'Save Income' : 'Update Income',
+                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                        ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

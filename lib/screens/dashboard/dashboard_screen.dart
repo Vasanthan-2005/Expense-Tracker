@@ -28,6 +28,7 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   bool _checkedAutoCelebration = false;
   Map<String, dynamic>? _monthBudgetPerformance;
+  Map<int, int> _historicalAccountBalances = {};
   int? _lastEvaluatedYear;
   int? _lastEvaluatedMonth;
 
@@ -103,16 +104,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Future<void> _evaluateSelectedMonthPerformance() async {
     final selMonth = context.read<ExpenseProvider>().selectedMonth;
     final settings = context.read<SettingsProvider>();
+    final now = DateTime.now();
+    final isCurrent = selMonth.year == now.year && selMonth.month == now.month;
 
     try {
-      final summary = await DatabaseHelper.instance.getMonthBudgetPerformance(
+      final summaryFuture = DatabaseHelper.instance.getMonthBudgetPerformance(
         year: selMonth.year,
         month: selMonth.month,
         overallBudgetPaise: settings.overallMonthlyBudgetPaise,
       );
+
+      final histBalancesFuture = isCurrent
+          ? Future.value(<int, int>{})
+          : DatabaseHelper.instance.getAccountClosingBalancesForMonth(selMonth.year, selMonth.month);
+
+      final results = await Future.wait([summaryFuture, histBalancesFuture]);
+
       if (mounted) {
         setState(() {
-          _monthBudgetPerformance = summary;
+          _monthBudgetPerformance = results[0] as Map<String, dynamic>;
+          _historicalAccountBalances = results[1] as Map<int, int>;
           _lastEvaluatedYear = selMonth.year;
           _lastEvaluatedMonth = selMonth.month;
         });
@@ -310,6 +321,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     return const SizedBox.shrink();
                   }
 
+                  int getAccountBalance(Account acc) {
+                    if (isCurrentMonth) {
+                      return accountProvider.getAccountBalancePaise(acc.id!);
+                    } else {
+                      return _historicalAccountBalances[acc.id!] ?? accountProvider.getAccountBalancePaise(acc.id!);
+                    }
+                  }
+
                   return Column(
                     children: [
                       const SizedBox(height: 12),
@@ -320,7 +339,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             child: SizedBox(
                               width: 240,
                               height: 88,
-                              child: _buildAccountCard(context, dashboardAccounts[0], accountProvider.getAccountBalancePaise(dashboardAccounts[0].id!), currency),
+                              child: _buildAccountCard(
+                                context,
+                                dashboardAccounts[0],
+                                getAccountBalance(dashboardAccounts[0]),
+                                currency,
+                                isCurrentMonth: isCurrentMonth,
+                                monthLabel: monthName,
+                              ),
                             ),
                           ),
                         )
@@ -332,11 +358,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             child: Row(
                               children: [
                                 Expanded(
-                                  child: _buildAccountCard(context, dashboardAccounts[0], accountProvider.getAccountBalancePaise(dashboardAccounts[0].id!), currency),
+                                  child: _buildAccountCard(
+                                    context,
+                                    dashboardAccounts[0],
+                                    getAccountBalance(dashboardAccounts[0]),
+                                    currency,
+                                    isCurrentMonth: isCurrentMonth,
+                                    monthLabel: monthName,
+                                  ),
                                 ),
                                 const SizedBox(width: 12),
                                 Expanded(
-                                  child: _buildAccountCard(context, dashboardAccounts[1], accountProvider.getAccountBalancePaise(dashboardAccounts[1].id!), currency),
+                                  child: _buildAccountCard(
+                                    context,
+                                    dashboardAccounts[1],
+                                    getAccountBalance(dashboardAccounts[1]),
+                                    currency,
+                                    isCurrentMonth: isCurrentMonth,
+                                    monthLabel: monthName,
+                                  ),
                                 ),
                               ],
                             ),
@@ -350,11 +390,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             child: Row(
                               children: [
                                 Expanded(
-                                  child: _buildAccountCard(context, dashboardAccounts[0], accountProvider.getAccountBalancePaise(dashboardAccounts[0].id!), currency, isCompact: true),
+                                  child: _buildAccountCard(
+                                    context,
+                                    dashboardAccounts[0],
+                                    getAccountBalance(dashboardAccounts[0]),
+                                    currency,
+                                    isCompact: true,
+                                    isCurrentMonth: isCurrentMonth,
+                                    monthLabel: monthName,
+                                  ),
                                 ),
                                 const SizedBox(width: 8),
                                 Expanded(
-                                  child: _buildAccountCard(context, dashboardAccounts[1], accountProvider.getAccountBalancePaise(dashboardAccounts[1].id!), currency, isCompact: true),
+                                  child: _buildAccountCard(
+                                    context,
+                                    dashboardAccounts[1],
+                                    getAccountBalance(dashboardAccounts[1]),
+                                    currency,
+                                    isCompact: true,
+                                    isCurrentMonth: isCurrentMonth,
+                                    monthLabel: monthName,
+                                  ),
                                 ),
                               ],
                             ),
@@ -646,7 +702,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildAccountCard(BuildContext context, Account acc, int liveBalPaise, String currency, {bool isCompact = false}) {
+  Widget _buildAccountCard(
+    BuildContext context,
+    Account acc,
+    int balPaise,
+    String currency, {
+    bool isCompact = false,
+    bool isCurrentMonth = true,
+    String? monthLabel,
+  }) {
     final theme = Theme.of(context);
     final accColor = Color(acc.colorValue);
 
@@ -693,6 +757,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
+              if (!isCurrentMonth && monthLabel != null) ...[
+                const SizedBox(width: 4),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.primary.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    '$monthLabel End',
+                    style: TextStyle(
+                      fontSize: 9.5,
+                      fontWeight: FontWeight.bold,
+                      color: theme.colorScheme.primary,
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
           const SizedBox(height: 4),
@@ -700,11 +782,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
             fit: BoxFit.scaleDown,
             alignment: Alignment.centerLeft,
             child: Text(
-              CurrencyFormatter.formatPaise(liveBalPaise, symbol: currency),
+              CurrencyFormatter.formatPaise(balPaise, symbol: currency),
               style: theme.textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.w800,
                 fontSize: isCompact ? 13 : 16,
-                color: liveBalPaise >= 0 ? accColor : theme.colorScheme.error,
+                color: balPaise >= 0 ? accColor : theme.colorScheme.error,
               ),
               maxLines: 1,
             ),
