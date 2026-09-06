@@ -31,6 +31,7 @@ class TransferMoneyModal extends StatefulWidget {
 class _TransferMoneyModalState extends State<TransferMoneyModal> {
   final _amountController = TextEditingController();
   final _noteController = TextEditingController();
+  final FocusNode _amountFocusNode = FocusNode();
 
   int? _fromAccountId;
   int? _toAccountId;
@@ -62,12 +63,22 @@ class _TransferMoneyModalState extends State<TransferMoneyModal> {
         }
       });
     }
+
+    // Explicitly request focus after bottom sheet animation to ensure keyboard always opens
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future.delayed(const Duration(milliseconds: 150), () {
+        if (mounted) {
+          _amountFocusNode.requestFocus();
+        }
+      });
+    });
   }
 
   @override
   void dispose() {
     _amountController.dispose();
     _noteController.dispose();
+    _amountFocusNode.dispose();
     super.dispose();
   }
 
@@ -229,6 +240,7 @@ class _TransferMoneyModalState extends State<TransferMoneyModal> {
                   Expanded(
                     child: TextField(
                       controller: _amountController,
+                      focusNode: _amountFocusNode,
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
                       autofocus: widget.existingTransfer == null,
                       style: theme.textTheme.headlineLarge?.copyWith(

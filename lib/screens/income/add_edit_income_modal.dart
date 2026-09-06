@@ -31,6 +31,7 @@ class AddEditIncomeModal extends StatefulWidget {
 class _AddEditIncomeModalState extends State<AddEditIncomeModal> {
   final _amountController = TextEditingController();
   final _noteController = TextEditingController();
+  final FocusNode _amountFocusNode = FocusNode();
 
   int? _selectedAccountId;
   DateTime _selectedDate = DateTime.now();
@@ -56,12 +57,22 @@ class _AddEditIncomeModalState extends State<AddEditIncomeModal> {
         }
       });
     }
+
+    // Explicitly request focus after bottom sheet animation to ensure keyboard always opens
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future.delayed(const Duration(milliseconds: 150), () {
+        if (mounted) {
+          _amountFocusNode.requestFocus();
+        }
+      });
+    });
   }
 
   @override
   void dispose() {
     _amountController.dispose();
     _noteController.dispose();
+    _amountFocusNode.dispose();
     super.dispose();
   }
 
@@ -212,6 +223,7 @@ class _AddEditIncomeModalState extends State<AddEditIncomeModal> {
                   Expanded(
                     child: TextField(
                       controller: _amountController,
+                      focusNode: _amountFocusNode,
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
                       autofocus: widget.existingIncome == null,
                       style: theme.textTheme.headlineLarge?.copyWith(

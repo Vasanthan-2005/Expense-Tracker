@@ -12,18 +12,137 @@ import '../../widgets/expense_tile.dart';
 import '../../widgets/empty_state.dart';
 import '../expense/add_edit_expense_modal.dart';
 
+import '../../core/database/database_helper.dart';
+import '../../widgets/celebration/month_end_celebration_modal.dart';
 import 'calendar_view_modal.dart';
 
-class DashboardScreen extends StatelessWidget {
+class DashboardScreen extends StatefulWidget {
   final VoidCallback onViewAllHistory;
 
   const DashboardScreen({super.key, required this.onViewAllHistory});
+
+  @override
+  State<DashboardScreen> createState() => _DashboardScreenState();
+}
+
+class _DashboardScreenState extends State<DashboardScreen> {
+  bool _checkedAutoCelebration = false;
+  Map<String, dynamic>? _monthBudgetPerformance;
+  int? _lastEvaluatedYear;
+  int? _lastEvaluatedMonth;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkAutoMonthEndCelebration();
+    });
+  }
+
+  Future<void> _checkAutoMonthEndCelebration() async {
+    final settings = context.read<SettingsProvider>();
+    if (!settings.isCelebrationEnabled) return;
+    if (_checkedAutoCelebration || !mounted) return;
+    _checkedAutoCelebration = true;
+
+    final now = DateTime.now();
+
+    // Only show celebration on the 1st and 2nd day of the current month
+    if (now.day != 1 && now.day != 2) return;
+
+    // Check previous completed month
+    final prevMonthDate = DateTime(now.year, now.month - 1, 1);
+    final prevMonthKey = "${prevMonthDate.year}-${prevMonthDate.month.toString().padLeft(2, '0')}";
+
+    if (settings.lastCelebratedMonth != prevMonthKey) {
+      try {
+        final summary = await DatabaseHelper.instance.getMonthBudgetPerformance(
+          year: prevMonthDate.year,
+          month: prevMonthDate.month,
+          overallBudgetPaise: settings.overallMonthlyBudgetPaise,
+        );
+
+        final hasData = summary['hasData'] == true;
+        // Do not celebrate if no proper data was recorded in the previous month
+        if (!hasData) return;
+
+        final isQualified = summary['isCelebrationQualified'] == true;
+        final hasBudgets = (summary['budgetedCategoriesCount'] as int? ?? 0) > 0 || settings.isOverallBudgetSet;
+        final shouldShow = isQualified || (!settings.isPositiveOnlyCelebration && hasBudgets);
+
+        if (shouldShow && mounted) {
+          await settings.setLastCelebratedMonth(prevMonthKey);
+          if (mounted) {
+            MonthEndCelebrationModal.show(
+              context,
+              year: prevMonthDate.year,
+              month: prevMonthDate.month,
+              totalSpentPaise: summary['totalSpentPaise'] as int,
+              overallBudgetPaise: summary['overallBudgetPaise'] as int?,
+              overallSavedPaise: summary['overallSavedPaise'] as int,
+              categoryBreakdown: summary['categoryBreakdown'] as List<Map<String, dynamic>>,
+              currencySymbol: settings.currencySymbol,
+              isQualified: isQualified,
+            );
+          }
+        }
+      } catch (e) {
+        debugPrint('Error evaluating auto celebration: $e');
+      }
+    }
+  }
 
   Future<void> _refreshData(BuildContext context) async {
     await Future.wait([
       context.read<ExpenseProvider>().refreshAll(),
       context.read<AccountProvider>().refreshAccounts(),
     ]);
+    _evaluateSelectedMonthPerformance();
+  }
+
+  Future<void> _evaluateSelectedMonthPerformance() async {
+    final selMonth = context.read<ExpenseProvider>().selectedMonth;
+    final settings = context.read<SettingsProvider>();
+
+    try {
+      final summary = await DatabaseHelper.instance.getMonthBudgetPerformance(
+        year: selMonth.year,
+        month: selMonth.month,
+        overallBudgetPaise: settings.overallMonthlyBudgetPaise,
+      );
+      if (mounted) {
+        setState(() {
+          _monthBudgetPerformance = summary;
+          _lastEvaluatedYear = selMonth.year;
+          _lastEvaluatedMonth = selMonth.month;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error evaluating month budget performance: $e');
+    }
+  }
+
+  Future<void> _showCelebrationForSelectedMonth(BuildContext context, int year, int month) async {
+    final settings = context.read<SettingsProvider>();
+    final summary = await DatabaseHelper.instance.getMonthBudgetPerformance(
+      year: year,
+      month: month,
+      overallBudgetPaise: settings.overallMonthlyBudgetPaise,
+    );
+
+    if (context.mounted) {
+      MonthEndCelebrationModal.show(
+        context,
+        year: year,
+        month: month,
+        totalSpentPaise: summary['totalSpentPaise'] as int,
+        overallBudgetPaise: summary['overallBudgetPaise'] as int?,
+        overallSavedPaise: summary['overallSavedPaise'] as int,
+        categoryBreakdown: summary['categoryBreakdown'] as List<Map<String, dynamic>>,
+        currencySymbol: settings.currencySymbol,
+        isQualified: summary['isCelebrationQualified'] == true,
+      );
+    }
   }
 
   static const _monthNames = [
@@ -47,6 +166,23 @@ class DashboardScreen extends StatelessWidget {
     final now = DateTime.now();
     final isCurrentMonth = selMonth.year == now.year && selMonth.month == now.month;
 
+    if (_lastEvaluatedYear != selMonth.year || _lastEvaluatedMonth != selMonth.month) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _evaluateSelectedMonthPerformance();
+      });
+    }
+
+    final hasOverallBudget = settings.isOverallBudgetSet;
+    final overallBudgetPaise = settings.overallMonthlyBudgetPaise ?? 0;
+    final monthSpentPaise = expenseProvider.monthTotalPaise;
+    final int remainingBudgetPaise = overallBudgetPaise - monthSpentPaise;
+    final double overallBudgetProgress = overallBudgetPaise > 0
+        ? (monthSpentPaise / overallBudgetPaise.toDouble()).clamp(0.0, 1.0)
+        : 0.0;
+
+    final isCelebrationQualified = _monthBudgetPerformance != null &&
+        _monthBudgetPerformance!['isCelebrationQualified'] == true;
+
     return Scaffold(
       appBar: AppBar(
         title: Row(
@@ -68,11 +204,6 @@ class DashboardScreen extends StatelessWidget {
             icon: const Icon(Icons.calendar_month_rounded),
             tooltip: 'Financial Calendar',
             onPressed: () => CalendarViewModal.show(context),
-          ),
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            tooltip: 'Refresh Totals',
-            onPressed: () => _refreshData(context),
           ),
         ],
       ),
@@ -235,6 +366,69 @@ class DashboardScreen extends StatelessWidget {
               ),
               const SizedBox(height: 16),
 
+              // Celebratory Banner (shown when past month expenses had proper data and were within all budget limits)
+              if (isCelebrationQualified && !isCurrentMonth)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFFF59E0B), Color(0xFFD97706)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(18),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFFF59E0B).withValues(alpha: 0.35),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: const BoxDecoration(
+                            color: Colors.white24,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.emoji_events_rounded, color: Colors.white, size: 22),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Budget Champion for $monthName!',
+                                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                              ),
+                              const SizedBox(height: 2),
+                              const Text(
+                                'All expenses stayed within budget limit 🎉',
+                                style: TextStyle(color: Colors.white70, fontSize: 11),
+                              ),
+                            ],
+                          ),
+                        ),
+                        FilledButton(
+                          onPressed: () => _showCelebrationForSelectedMonth(context, selMonth.year, selMonth.month),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: Colors.white,
+                            foregroundColor: const Color(0xFFB45309),
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                          child: const Text('Celebrate! 🏆', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
               // 2. Spending Metric Hero Card (Monthly Basis)
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -294,7 +488,7 @@ class DashboardScreen extends StatelessWidget {
                           ),
                           const SizedBox(height: 12),
                           Text(
-                            CurrencyFormatter.formatPaise(expenseProvider.monthTotalPaise, symbol: currency),
+                            CurrencyFormatter.formatPaise(monthSpentPaise, symbol: currency),
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 34,
@@ -302,6 +496,44 @@ class DashboardScreen extends StatelessWidget {
                               letterSpacing: -0.5,
                             ),
                           ),
+
+                          // Overall Budget Progress (if configured)
+                          if (hasOverallBudget) ...[
+                            const SizedBox(height: 12),
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(6),
+                              child: LinearProgressIndicator(
+                                value: overallBudgetProgress,
+                                minHeight: 6,
+                                backgroundColor: Colors.white24,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  overallBudgetProgress < 0.8
+                                      ? Colors.white
+                                      : (overallBudgetProgress <= 1.0 ? Colors.amberAccent : Colors.redAccent),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  'Budget: ${CurrencyFormatter.formatPaise(overallBudgetPaise, symbol: currency)}',
+                                  style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w500),
+                                ),
+                                Text(
+                                  remainingBudgetPaise >= 0
+                                      ? '${CurrencyFormatter.formatPaise(remainingBudgetPaise, symbol: currency)} left'
+                                      : '${CurrencyFormatter.formatPaise(-remainingBudgetPaise, symbol: currency)} over',
+                                  style: TextStyle(
+                                    color: remainingBudgetPaise >= 0 ? Colors.white : Colors.redAccent,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -352,7 +584,7 @@ class DashboardScreen extends StatelessWidget {
                       ),
                     ),
                     TextButton(
-                      onPressed: onViewAllHistory,
+                      onPressed: widget.onViewAllHistory,
                       child: const Row(
                         children: [
                           Text('View All'),

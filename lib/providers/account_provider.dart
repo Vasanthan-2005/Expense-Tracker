@@ -14,6 +14,14 @@ class AccountProvider with ChangeNotifier {
   List<Transfer> _recentTransfers = [];
   bool _isLoading = false;
 
+  // Monthly Income History State
+  DateTime _selectedIncomeMonth = DateTime(DateTime.now().year, DateTime.now().month, 1);
+  List<Income> _monthlyIncomes = [];
+  int _monthlyTotalIncomePaise = 0;
+  Map<int, int> _accountIncomeBreakdown = {};
+  int? _incomeFilterAccountId;
+  String _incomeSearchQuery = '';
+
   @override
   void dispose() {
     _isDisposed = true;
@@ -34,6 +42,13 @@ class AccountProvider with ChangeNotifier {
   List<Transfer> get recentTransfers => List.unmodifiable(_recentTransfers);
   bool get isLoading => _isLoading;
 
+  DateTime get selectedIncomeMonth => _selectedIncomeMonth;
+  List<Income> get monthlyIncomes => List.unmodifiable(_monthlyIncomes);
+  int get monthlyTotalIncomePaise => _monthlyTotalIncomePaise;
+  Map<int, int> get accountIncomeBreakdown => Map.unmodifiable(_accountIncomeBreakdown);
+  int? get incomeFilterAccountId => _incomeFilterAccountId;
+  String get incomeSearchQuery => _incomeSearchQuery;
+
   /// Total combined net worth in Paise across all active accounts
   int get totalNetWorthPaise {
     int total = 0;
@@ -51,6 +66,58 @@ class AccountProvider with ChangeNotifier {
     refreshAccounts();
   }
 
+  void setSelectedIncomeMonth(DateTime month) {
+    _selectedIncomeMonth = DateTime(month.year, month.month, 1);
+    refreshMonthlyIncomes();
+  }
+
+  void previousIncomeMonth() {
+    setSelectedIncomeMonth(DateTime(_selectedIncomeMonth.year, _selectedIncomeMonth.month - 1, 1));
+  }
+
+  void nextIncomeMonth() {
+    setSelectedIncomeMonth(DateTime(_selectedIncomeMonth.year, _selectedIncomeMonth.month + 1, 1));
+  }
+
+  void setIncomeFilterAccountId(int? accountId) {
+    _incomeFilterAccountId = accountId;
+    refreshMonthlyIncomes();
+  }
+
+  void setIncomeSearchQuery(String query) {
+    _incomeSearchQuery = query;
+    refreshMonthlyIncomes();
+  }
+
+  Future<void> refreshMonthlyIncomes() async {
+    try {
+      final db = DatabaseHelper.instance;
+      final year = _selectedIncomeMonth.year;
+      final month = _selectedIncomeMonth.month;
+      final lastDay = DateTime(year, month + 1, 0).day;
+      final start = DateTime(year, month, 1);
+      final end = DateTime(year, month, lastDay, 23, 59, 59);
+
+      final results = await Future.wait([
+        db.getIncomesFiltered(
+          accountId: _incomeFilterAccountId,
+          startDate: start,
+          endDate: end,
+          searchQuery: _incomeSearchQuery.trim().isEmpty ? null : _incomeSearchQuery.trim(),
+        ),
+        db.getTotalIncomePaiseForMonth(year, month, accountId: _incomeFilterAccountId),
+        db.getAccountIncomeBreakdownForMonth(year, month),
+      ]);
+
+      _monthlyIncomes = results[0] as List<Income>;
+      _monthlyTotalIncomePaise = results[1] as int;
+      _accountIncomeBreakdown = results[2] as Map<int, int>;
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Error refreshing monthly incomes: $e');
+    }
+  }
+
   Future<void> refreshAccounts() async {
     _isLoading = true;
     notifyListeners();
@@ -62,6 +129,7 @@ class AccountProvider with ChangeNotifier {
       _defaultAccount = await db.getDefaultAccount();
       _recentIncomes = await db.getIncomes(limit: 10);
       _recentTransfers = await db.getTransfers(limit: 10);
+      await refreshMonthlyIncomes();
     } catch (e) {
       debugPrint('Error refreshing accounts: $e');
     } finally {

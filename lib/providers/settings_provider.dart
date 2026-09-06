@@ -29,6 +29,13 @@ class SettingsProvider with ChangeNotifier {
   bool get isAccountsSectionEnabled => _settings.isAccountsSectionEnabled;
   int? get lastCategoryId => _settings.lastCategoryId;
   String get exportFolderPath => _settings.exportFolderPath;
+  int? get overallMonthlyBudgetPaise => _settings.overallMonthlyBudgetPaise;
+  double get overallMonthlyBudgetDouble => _settings.overallMonthlyBudgetDouble;
+  bool get isOverallBudgetSet => _settings.isOverallBudgetSet;
+  String? get lastCelebratedMonth => _settings.lastCelebratedMonth;
+  bool get isCelebrationEnabled => _settings.isCelebrationEnabled;
+  String get celebrationMode => _settings.celebrationMode;
+  bool get isPositiveOnlyCelebration => _settings.isPositiveOnlyCelebration;
   bool get isLoading => _isLoading;
 
   SettingsProvider() {
@@ -119,6 +126,33 @@ class SettingsProvider with ChangeNotifier {
     _settings = _settings.copyWith(exportFolderPath: cleanPath);
     notifyListeners();
     await DatabaseHelper.instance.updateSetting('export_folder_path', cleanPath);
+  }
+
+  Future<void> setOverallMonthlyBudget(int? budgetPaise) async {
+    _settings = _settings.copyWith(
+      overallMonthlyBudgetPaise: budgetPaise,
+      resetOverallMonthlyBudget: budgetPaise == null,
+    );
+    notifyListeners();
+    await DatabaseHelper.instance.updateSetting('overall_monthly_budget', budgetPaise?.toString() ?? '');
+  }
+
+  Future<void> setLastCelebratedMonth(String yearMonth) async {
+    _settings = _settings.copyWith(lastCelebratedMonth: yearMonth);
+    notifyListeners();
+    await DatabaseHelper.instance.updateSetting('last_celebrated_month', yearMonth);
+  }
+
+  Future<void> setCelebrationEnabled(bool enabled) async {
+    _settings = _settings.copyWith(isCelebrationEnabled: enabled);
+    notifyListeners();
+    await DatabaseHelper.instance.updateSetting('celebration_enabled', enabled ? 'true' : 'false');
+  }
+
+  Future<void> setCelebrationMode(String mode) async {
+    _settings = _settings.copyWith(celebrationMode: mode);
+    notifyListeners();
+    await DatabaseHelper.instance.updateSetting('celebration_mode', mode);
   }
 
   Future<void> reloadSettings() async {

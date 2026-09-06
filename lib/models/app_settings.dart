@@ -12,6 +12,10 @@ class AppSettings {
   final bool isAccountsSectionEnabled;
   final int? lastCategoryId;
   final String exportFolderPath;
+  final int? overallMonthlyBudgetPaise;
+  final String? lastCelebratedMonth;
+  final bool isCelebrationEnabled;
+  final String celebrationMode; // 'all_reviews' or 'positive_only'
 
   const AppSettings({
     this.themeOption = AppThemeOption.dark,
@@ -20,7 +24,15 @@ class AppSettings {
     this.isAccountsSectionEnabled = true,
     this.lastCategoryId,
     this.exportFolderPath = 'et_app_export',
+    this.overallMonthlyBudgetPaise,
+    this.lastCelebratedMonth,
+    this.isCelebrationEnabled = true,
+    this.celebrationMode = 'all_reviews',
   });
+
+  double get overallMonthlyBudgetDouble => (overallMonthlyBudgetPaise ?? 0) / 100.0;
+  bool get isOverallBudgetSet => overallMonthlyBudgetPaise != null && overallMonthlyBudgetPaise! > 0;
+  bool get isPositiveOnlyCelebration => celebrationMode == 'positive_only';
 
   AppSettings copyWith({
     AppThemeOption? themeOption,
@@ -29,6 +41,11 @@ class AppSettings {
     bool? isAccountsSectionEnabled,
     int? lastCategoryId,
     String? exportFolderPath,
+    int? overallMonthlyBudgetPaise,
+    bool resetOverallMonthlyBudget = false,
+    String? lastCelebratedMonth,
+    bool? isCelebrationEnabled,
+    String? celebrationMode,
   }) {
     return AppSettings(
       themeOption: themeOption ?? this.themeOption,
@@ -37,6 +54,12 @@ class AppSettings {
       isAccountsSectionEnabled: isAccountsSectionEnabled ?? this.isAccountsSectionEnabled,
       lastCategoryId: lastCategoryId ?? this.lastCategoryId,
       exportFolderPath: exportFolderPath ?? this.exportFolderPath,
+      overallMonthlyBudgetPaise: resetOverallMonthlyBudget
+          ? null
+          : (overallMonthlyBudgetPaise ?? this.overallMonthlyBudgetPaise),
+      lastCelebratedMonth: lastCelebratedMonth ?? this.lastCelebratedMonth,
+      isCelebrationEnabled: isCelebrationEnabled ?? this.isCelebrationEnabled,
+      celebrationMode: celebrationMode ?? this.celebrationMode,
     );
   }
 
@@ -48,6 +71,10 @@ class AppSettings {
       'accounts_section_enabled': isAccountsSectionEnabled ? 'true' : 'false',
       'last_category_id': lastCategoryId?.toString() ?? '',
       'export_folder_path': exportFolderPath,
+      'overall_monthly_budget': overallMonthlyBudgetPaise?.toString() ?? '',
+      'last_celebrated_month': lastCelebratedMonth ?? '',
+      'celebration_enabled': isCelebrationEnabled ? 'true' : 'false',
+      'celebration_mode': celebrationMode,
     };
   }
 
@@ -74,7 +101,15 @@ class AppSettings {
         ? int.tryParse(categoryIdStr)
         : null;
 
+    final overallBudgetStr = map['overall_monthly_budget'];
+    final overallBudgetPaise = (overallBudgetStr != null && overallBudgetStr.isNotEmpty)
+        ? int.tryParse(overallBudgetStr)
+        : null;
+
+    final lastCelebrated = map['last_celebrated_month'];
     final accountsEnabled = map['accounts_section_enabled'] != 'false';
+    final celebrationEnabled = map['celebration_enabled'] != 'false';
+    final celebrationMode = map['celebration_mode'] ?? 'all_reviews';
 
     return AppSettings(
       themeOption: option,
@@ -83,6 +118,10 @@ class AppSettings {
       isAccountsSectionEnabled: accountsEnabled,
       lastCategoryId: categoryId,
       exportFolderPath: map['export_folder_path'] ?? 'et_app_export',
+      overallMonthlyBudgetPaise: overallBudgetPaise,
+      lastCelebratedMonth: (lastCelebrated != null && lastCelebrated.isNotEmpty) ? lastCelebrated : null,
+      isCelebrationEnabled: celebrationEnabled,
+      celebrationMode: celebrationMode,
     );
   }
 }

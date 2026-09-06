@@ -604,6 +604,295 @@ class DatabaseHelper {
     return maps.map((m) => Income.fromMap(m)).toList();
   }
 
+  Future<List<Income>> getIncomesFiltered({
+    int? accountId,
+    DateTime? startDate,
+    DateTime? endDate,
+    String? searchQuery,
+    int? limit,
+    int? offset,
+    bool oldestFirst = false,
+  }) async {
+    final db = await database;
+
+    final whereClauses = <String>[];
+    final whereArgs = <dynamic>[];
+
+    if (accountId != null) {
+      whereClauses.add('account_id = ?');
+      whereArgs.add(accountId);
+    }
+
+    if (searchQuery != null && searchQuery.trim().isNotEmpty) {
+      whereClauses.add('(source_or_note LIKE ?)');
+      whereArgs.add('%${searchQuery.trim()}%');
+    }
+
+    if (startDate != null) {
+      final startIso = "${startDate.year.toString().padLeft(4, '0')}-${startDate.month.toString().padLeft(2, '0')}-${startDate.day.toString().padLeft(2, '0')}";
+      whereClauses.add('date >= ?');
+      whereArgs.add(startIso);
+    }
+
+    if (endDate != null) {
+      final endIso = "${endDate.year.toString().padLeft(4, '0')}-${endDate.month.toString().padLeft(2, '0')}-${endDate.day.toString().padLeft(2, '0')}";
+      whereClauses.add('date <= ?');
+      whereArgs.add(endIso);
+    }
+
+    final whereString = whereClauses.isNotEmpty ? whereClauses.join(' AND ') : null;
+    final orderBy = oldestFirst ? 'date ASC, time ASC, id ASC' : 'date DESC, time DESC, id DESC';
+
+    final maps = await db.query(
+      'incomes',
+      where: whereString,
+      whereArgs: whereArgs.isNotEmpty ? whereArgs : null,
+      orderBy: orderBy,
+      limit: limit,
+      offset: offset,
+    );
+
+    return maps.map((m) => Income.fromMap(m)).toList();
+  }
+
+  Future<int> getTotalIncomePaiseForMonth(int year, int month, {int? accountId}) async {
+    final db = await database;
+    final yearStr = year.toString().padLeft(4, '0');
+    final monthStr = month.toString().padLeft(2, '0');
+    final lastDay = DateTime(year, month + 1, 0).day.toString().padLeft(2, '0');
+    final startIso = '$yearStr-$monthStr-01';
+    final endIso = '$yearStr-$monthStr-$lastDay';
+
+    final whereClauses = ['date >= ?', 'date <= ?'];
+    final whereArgs = <dynamic>[startIso, endIso];
+
+    if (accountId != null) {
+      whereClauses.add('account_id = ?');
+      whereArgs.add(accountId);
+    }
+
+    final res = await db.rawQuery('''
+      SELECT SUM(amount) as total 
+      FROM incomes 
+      WHERE ${whereClauses.join(' AND ')}
+    ''', whereArgs);
+
+    return (res.first['total'] as int?) ?? 0;
+  }
+
+  Future<Map<int, int>> getAccountIncomeBreakdownForMonth(int year, int month) async {
+    final db = await database;
+    final yearStr = year.toString().padLeft(4, '0');
+    final monthStr = month.toString().padLeft(2, '0');
+    final lastDay = DateTime(year, month + 1, 0).day.toString().padLeft(2, '0');
+    final startIso = '$yearStr-$monthStr-01';
+    final endIso = '$yearStr-$monthStr-$lastDay';
+
+    final res = await db.rawQuery('''
+      SELECT account_id, SUM(amount) as total 
+      FROM incomes 
+      WHERE date >= ? AND date <= ?
+      GROUP BY account_id
+    ''', [startIso, endIso]);
+
+    final Map<int, int> result = {};
+    for (final row in res) {
+      final accId = row['account_id'] as int;
+      final tot = (row['total'] as int?) ?? 0;
+      result[accId] = tot;
+    }
+    return result;
+  }
+
+  Future<Map<String, dynamic>> getMonthBudgetPerformance({
+    required int year,
+    required int month,
+    int? overallBudgetPaise,
+  }) async {
+    final db = await database;
+    final yearStr = year.toString().padLeft(4, '0');
+    final monthStr = month.toString().padLeft(2, '0');
+    final lastDay = DateTime(year, month + 1, 0).day.toString().padLeft(2, '0');
+    final startIso = '$yearStr-$monthStr-01';
+    final endIso = '$yearStr-$monthStr-$lastDay';
+
+    // 1. Total spent in month & count of expenses
+    final totalSpentRes = await db.rawQuery(
+      'SELECT SUM(amount) as total, COUNT(*) as count FROM expenses WHERE date >= ? AND date <= ?',
+      [startIso, endIso],
+    );
+    final totalSpentPaise = (totalSpentRes.first['total'] as int?) ?? 0;
+    final expenseCount = (totalSpentRes.first['count'] as int?) ?? 0;
+    final bool hasData = expenseCount > 0 && totalSpentPaise > 0;
+
+    // 2. Categories with budget
+    final catMaps = await db.query('categories', orderBy: 'sort_order ASC, id ASC');
+    final categories = catMaps.map((m) => Category.fromMap(m)).toList();
+    final spentMap = await getAllCategorySpentPaiseForMonth(year, month);
+
+    final List<Map<String, dynamic>> categoryBreakdown = [];
+    int budgetedCategoriesCount = 0;
+    int categoriesWithinBudgetCount = 0;
+    bool allCategoriesWithinBudget = true;
+
+    for (final cat in categories) {
+      final spent = spentMap[cat.id] ?? 0;
+      final hasBudget = cat.isBudgetSet;
+      final budget = cat.monthlyBudgetPaise;
+      final isWithin = !hasBudget || (spent <= budget!);
+
+      if (hasBudget) {
+        budgetedCategoriesCount++;
+        if (isWithin) {
+          categoriesWithinBudgetCount++;
+        } else {
+          allCategoriesWithinBudget = false;
+        }
+      }
+
+      categoryBreakdown.add({
+        'category': cat,
+        'spentPaise': spent,
+        'budgetPaise': budget,
+        'isBudgetSet': hasBudget,
+        'isWithinBudget': isWithin,
+        'savedPaise': (hasData && hasBudget && budget != null) ? (budget - spent) : null,
+      });
+    }
+
+    final bool isOverallBudgetSet = overallBudgetPaise != null && overallBudgetPaise > 0;
+    final bool isOverallWithinBudget = !isOverallBudgetSet || (totalSpentPaise <= overallBudgetPaise);
+    final int overallSavedPaise = (hasData && isOverallBudgetSet) ? (overallBudgetPaise - totalSpentPaise) : 0;
+
+    final bool hasAnyBudget = isOverallBudgetSet || budgetedCategoriesCount > 0;
+    // Celebration qualification strictly requires proper data in the month (hasData = true)
+    final bool isCelebrationQualified = hasData && hasAnyBudget && isOverallWithinBudget && allCategoriesWithinBudget;
+    final int exceededCategoriesCount = budgetedCategoriesCount - categoriesWithinBudgetCount;
+
+    return {
+      'year': year,
+      'month': month,
+      'hasData': hasData,
+      'expenseCount': expenseCount,
+      'totalSpentPaise': totalSpentPaise,
+      'overallBudgetPaise': overallBudgetPaise,
+      'isOverallBudgetSet': isOverallBudgetSet,
+      'isOverallWithinBudget': isOverallWithinBudget,
+      'overallSavedPaise': overallSavedPaise,
+      'budgetedCategoriesCount': budgetedCategoriesCount,
+      'categoriesWithinBudgetCount': categoriesWithinBudgetCount,
+      'exceededCategoriesCount': exceededCategoriesCount,
+      'allCategoriesWithinBudget': allCategoriesWithinBudget,
+      'isCelebrationQualified': isCelebrationQualified,
+      'categoryBreakdown': categoryBreakdown,
+    };
+  }
+
+  Future<List<Map<String, dynamic>>> getAllDistinctYearMonths() async {
+    final db = await database;
+    final Set<String> distinctKeys = {};
+    final List<Map<String, dynamic>> result = [];
+
+    const months = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+
+    final expRows = await db.query('expenses', columns: ['date'], where: 'date IS NOT NULL');
+    final incRows = await db.query('incomes', columns: ['date'], where: 'date IS NOT NULL');
+
+    final allRows = [...expRows, ...incRows];
+    for (final row in allRows) {
+      final dateStr = row['date'] as String?;
+      if (dateStr != null && dateStr.isNotEmpty) {
+        final parsed = DateTime.tryParse(dateStr);
+        if (parsed != null) {
+          final key = '${parsed.year.toString().padLeft(4, '0')}-${parsed.month.toString().padLeft(2, '0')}';
+          if (!distinctKeys.contains(key)) {
+            distinctKeys.add(key);
+            result.add({
+              'year': parsed.year,
+              'month': parsed.month,
+              'key': key,
+              'label': '${months[parsed.month - 1]} ${parsed.year}',
+            });
+          }
+        }
+      }
+    }
+
+    result.sort((a, b) => (b['key'] as String).compareTo(a['key'] as String));
+    return result;
+  }
+
+  Future<List<Map<String, dynamic>>> getAllMonthsBudgetPerformance({int? overallBudgetPaise}) async {
+    final availableMonths = await getAllDistinctYearMonths();
+    final List<Map<String, dynamic>> results = [];
+
+    for (final m in availableMonths) {
+      final year = m['year'] as int;
+      final month = m['month'] as int;
+      final perf = await getMonthBudgetPerformance(
+        year: year,
+        month: month,
+        overallBudgetPaise: overallBudgetPaise,
+      );
+      if (perf['hasData'] == true && (perf['totalSpentPaise'] as int? ?? 0) > 0) {
+        results.add(perf);
+      }
+    }
+    return results;
+  }
+
+  Future<Map<String, dynamic>> getCelebrationSummaryStats({int? overallBudgetPaise}) async {
+    final allHistory = await getAllMonthsBudgetPerformance(overallBudgetPaise: overallBudgetPaise);
+    
+    int totalSavedAllTimePaise = 0;
+    int totalWinningMonths = 0;
+    int currentStreak = 0;
+    int bestStreak = 0;
+    int runningStreak = 0;
+    bool streakBroken = false;
+
+    for (int i = 0; i < allHistory.length; i++) {
+      final perf = allHistory[i];
+      final isWon = perf['isCelebrationQualified'] == true;
+      final saved = perf['overallSavedPaise'] as int? ?? 0;
+      if (saved > 0) {
+        totalSavedAllTimePaise += saved;
+      }
+      if (isWon) {
+        totalWinningMonths++;
+        if (!streakBroken) {
+          currentStreak++;
+        }
+      } else {
+        streakBroken = true;
+      }
+    }
+
+    for (int i = allHistory.length - 1; i >= 0; i--) {
+      final isWon = allHistory[i]['isCelebrationQualified'] == true;
+      if (isWon) {
+        runningStreak++;
+        if (runningStreak > bestStreak) {
+          bestStreak = runningStreak;
+        }
+      } else {
+        runningStreak = 0;
+      }
+    }
+
+    return {
+      'totalSavedAllTimePaise': totalSavedAllTimePaise,
+      'totalWinningMonths': totalWinningMonths,
+      'totalReviewedMonths': allHistory.length,
+      'currentStreak': currentStreak,
+      'bestStreak': bestStreak,
+      'allHistory': allHistory,
+    };
+  }
+
   // --- TRANSFERS CRUD ---
 
   Future<int> insertTransfer(Transfer transfer) async {
