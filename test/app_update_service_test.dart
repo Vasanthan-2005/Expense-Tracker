@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:expense_tracker/models/app_version.dart';
-import 'package:expense_tracker/services/app_update_service.dart';
 
 void main() {
   group('AppUpdateService Update Check Tests (Part 14 Requirements)', () {
