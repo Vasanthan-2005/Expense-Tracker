@@ -203,6 +203,26 @@ class AccountsScreen extends StatelessWidget {
                                                 ),
                                               ),
                                             ],
+                                            const SizedBox(width: 6),
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                              decoration: BoxDecoration(
+                                                color: account.balanceMode == AccountBalanceMode.monthly
+                                                    ? theme.colorScheme.tertiary.withValues(alpha: 0.15)
+                                                    : theme.colorScheme.primary.withValues(alpha: 0.12),
+                                                borderRadius: BorderRadius.circular(8),
+                                              ),
+                                              child: Text(
+                                                account.balanceMode == AccountBalanceMode.monthly ? 'MONTHLY' : 'OVERALL',
+                                                style: TextStyle(
+                                                  color: account.balanceMode == AccountBalanceMode.monthly
+                                                      ? theme.colorScheme.tertiary
+                                                      : theme.colorScheme.primary,
+                                                  fontSize: 9.5,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                            ),
                                           ],
                                         ),
                                         const SizedBox(height: 4),
@@ -219,6 +239,11 @@ class AccountsScreen extends StatelessWidget {
                                     onSelected: (val) async {
                                       if (val == 'edit') {
                                         AddEditAccountModal.show(context, existingAccount: account);
+                                      } else if (val == 'toggle_mode') {
+                                        final newMode = account.balanceMode == AccountBalanceMode.monthly
+                                            ? AccountBalanceMode.overall
+                                            : AccountBalanceMode.monthly;
+                                        await accountProvider.setAccountBalanceMode(account.id!, newMode);
                                       } else if (val == 'default') {
                                         await accountProvider.setDefaultAccount(account.id!);
                                       } else if (val == 'delete') {
@@ -233,6 +258,23 @@ class AccountsScreen extends StatelessWidget {
                                             Icon(Icons.edit_outlined, size: 20),
                                             SizedBox(width: 8),
                                             Text('Edit Account'),
+                                          ],
+                                        ),
+                                      ),
+                                      PopupMenuItem(
+                                        value: 'toggle_mode',
+                                        child: Row(
+                                          children: [
+                                            Icon(
+                                              account.balanceMode == AccountBalanceMode.monthly
+                                                  ? Icons.all_inclusive_rounded
+                                                  : Icons.calendar_month_rounded,
+                                              size: 20,
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Text(account.balanceMode == AccountBalanceMode.monthly
+                                                ? 'Switch to Overall Balance'
+                                                : 'Switch to Monthly Balance'),
                                           ],
                                         ),
                                       ),
@@ -265,9 +307,21 @@ class AccountsScreen extends StatelessWidget {
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
-                                  const Text(
-                                    'Current Live Balance',
-                                    style: TextStyle(fontSize: 13, color: Colors.grey, fontWeight: FontWeight.w500),
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        account.balanceMode == AccountBalanceMode.monthly
+                                            ? 'Monthly Balance'
+                                            : 'Current Live Balance',
+                                        style: const TextStyle(fontSize: 13, color: Colors.grey, fontWeight: FontWeight.w500),
+                                      ),
+                                      if (account.balanceMode == AccountBalanceMode.monthly)
+                                        const Text(
+                                          'Selected month only',
+                                          style: TextStyle(fontSize: 10, color: Colors.grey),
+                                        ),
+                                    ],
                                   ),
                                   Text(
                                     CurrencyFormatter.formatPaise(liveBalancePaise, symbol: currency),

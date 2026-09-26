@@ -115,9 +115,6 @@ class ExpenseProvider with ChangeNotifier {
     }
   }
 
-  Future<void> fetchExpenses() async {
-    await refreshAll();
-  }
 
   Future<void> addExpense(Expense expense) async {
     await DatabaseHelper.instance.insertExpense(expense);
@@ -137,7 +134,7 @@ class ExpenseProvider with ChangeNotifier {
   void setSearchQuery(String query) {
     if (_searchQuery != query) {
       _searchQuery = query;
-      fetchExpenses();
+      refreshAll();
     }
   }
 
@@ -147,31 +144,31 @@ class ExpenseProvider with ChangeNotifier {
     } else {
       _selectedCategoryIds.add(categoryId);
     }
-    fetchExpenses();
+    refreshAll();
   }
 
   void clearCategoryFilter() {
     if (_selectedCategoryIds.isNotEmpty) {
       _selectedCategoryIds.clear();
-      fetchExpenses();
+      refreshAll();
     }
   }
 
   void setDateRange(DateTime? start, DateTime? end) {
     _startDate = start;
     _endDate = end;
-    fetchExpenses();
+    refreshAll();
   }
 
   void clearDateRange() {
     _startDate = null;
     _endDate = null;
-    fetchExpenses();
+    refreshAll();
   }
 
   void toggleSortOrder() {
     _oldestFirst = !_oldestFirst;
-    fetchExpenses();
+    refreshAll();
   }
 
   void clearAllFilters() {
@@ -180,6 +177,6 @@ class ExpenseProvider with ChangeNotifier {
     _startDate = null;
     _endDate = null;
     _oldestFirst = false;
-    fetchExpenses();
+    refreshAll();
   }
 }

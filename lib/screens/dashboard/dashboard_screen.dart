@@ -28,7 +28,6 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   bool _checkedAutoCelebration = false;
   Map<String, dynamic>? _monthBudgetPerformance;
-  Map<int, int> _historicalAccountBalances = {};
   int? _lastEvaluatedYear;
   int? _lastEvaluatedMonth;
 
@@ -94,36 +93,40 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _refreshData(BuildContext context) async {
+    final selMonth = context.read<ExpenseProvider>().selectedMonth;
+    final accountProvider = context.read<AccountProvider>();
     await Future.wait([
       context.read<ExpenseProvider>().refreshAll(),
-      context.read<AccountProvider>().refreshAccounts(),
+      accountProvider.refreshAccounts(),
     ]);
+    if (mounted) {
+      await accountProvider.setSelectedBalanceMonth(
+        selMonth.year, selMonth.month,
+      );
+    }
     _evaluateSelectedMonthPerformance();
   }
 
   Future<void> _evaluateSelectedMonthPerformance() async {
+    if (!mounted) return;
     final selMonth = context.read<ExpenseProvider>().selectedMonth;
     final settings = context.read<SettingsProvider>();
-    final now = DateTime.now();
-    final isCurrent = selMonth.year == now.year && selMonth.month == now.month;
+
+    // Sync month to AccountProvider so monthly-mode balances are correct
+    await context.read<AccountProvider>().setSelectedBalanceMonth(
+      selMonth.year, selMonth.month,
+    );
 
     try {
-      final summaryFuture = DatabaseHelper.instance.getMonthBudgetPerformance(
+      final summary = await DatabaseHelper.instance.getMonthBudgetPerformance(
         year: selMonth.year,
         month: selMonth.month,
         overallBudgetPaise: settings.overallMonthlyBudgetPaise,
       );
 
-      final histBalancesFuture = isCurrent
-          ? Future.value(<int, int>{})
-          : DatabaseHelper.instance.getAccountClosingBalancesForMonth(selMonth.year, selMonth.month);
-
-      final results = await Future.wait([summaryFuture, histBalancesFuture]);
-
       if (mounted) {
         setState(() {
-          _monthBudgetPerformance = results[0] as Map<String, dynamic>;
-          _historicalAccountBalances = results[1] as Map<int, int>;
+          _monthBudgetPerformance = summary;
           _lastEvaluatedYear = selMonth.year;
           _lastEvaluatedMonth = selMonth.month;
         });
@@ -249,6 +252,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         final prev = DateTime(selMonth.year, selMonth.month - 1, 1);
                         expenseProvider.setSelectedMonth(prev);
                         context.read<ReportsProvider>().setSelectedMonth(prev);
+                        context.read<AccountProvider>().setSelectedBalanceMonth(prev.year, prev.month);
                       },
                       tooltip: 'Previous Month',
                     ),
@@ -265,6 +269,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             expenseProvider.setSelectedMonth(picked);
                             if (context.mounted) {
                               context.read<ReportsProvider>().setSelectedMonth(picked);
+                              context.read<AccountProvider>().setSelectedBalanceMonth(picked.year, picked.month);
                             }
                           }
                         },
@@ -303,6 +308,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         final next = DateTime(selMonth.year, selMonth.month + 1, 1);
                         expenseProvider.setSelectedMonth(next);
                         context.read<ReportsProvider>().setSelectedMonth(next);
+                        context.read<AccountProvider>().setSelectedBalanceMonth(next.year, next.month);
                       },
                       tooltip: 'Next Month',
                     ),
@@ -321,12 +327,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     return const SizedBox.shrink();
                   }
 
+                  // accountProvider.getAccountBalancePaise() already handles
+                  // balance mode (monthly vs overall) based on the account's setting
+                  // and the currently selected balance month.
                   int getAccountBalance(Account acc) {
-                    if (isCurrentMonth) {
-                      return accountProvider.getAccountBalancePaise(acc.id!);
-                    } else {
-                      return _historicalAccountBalances[acc.id!] ?? accountProvider.getAccountBalancePaise(acc.id!);
-                    }
+                    return accountProvider.getAccountBalancePaise(acc.id!);
                   }
 
                   return Column(
@@ -344,7 +349,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 dashboardAccounts[0],
                                 getAccountBalance(dashboardAccounts[0]),
                                 currency,
-                                isCurrentMonth: isCurrentMonth,
                                 monthLabel: monthName,
                               ),
                             ),
@@ -363,7 +367,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                     dashboardAccounts[0],
                                     getAccountBalance(dashboardAccounts[0]),
                                     currency,
-                                    isCurrentMonth: isCurrentMonth,
                                     monthLabel: monthName,
                                   ),
                                 ),
@@ -374,7 +377,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                     dashboardAccounts[1],
                                     getAccountBalance(dashboardAccounts[1]),
                                     currency,
-                                    isCurrentMonth: isCurrentMonth,
                                     monthLabel: monthName,
                                   ),
                                 ),
@@ -396,7 +398,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                     getAccountBalance(dashboardAccounts[0]),
                                     currency,
                                     isCompact: true,
-                                    isCurrentMonth: isCurrentMonth,
                                     monthLabel: monthName,
                                   ),
                                 ),
@@ -408,7 +409,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                     getAccountBalance(dashboardAccounts[1]),
                                     currency,
                                     isCompact: true,
-                                    isCurrentMonth: isCurrentMonth,
                                     monthLabel: monthName,
                                   ),
                                 ),
@@ -708,11 +708,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
     int balPaise,
     String currency, {
     bool isCompact = false,
-    bool isCurrentMonth = true,
     String? monthLabel,
   }) {
     final theme = Theme.of(context);
     final accColor = Color(acc.colorValue);
+    final isMonthly = acc.balanceMode == AccountBalanceMode.monthly;
 
     return Container(
       padding: EdgeInsets.all(isCompact ? 10 : 14),
@@ -757,24 +757,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              if (!isCurrentMonth && monthLabel != null) ...[
-                const SizedBox(width: 4),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.primary.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    '$monthLabel End',
-                    style: TextStyle(
-                      fontSize: 9.5,
-                      fontWeight: FontWeight.bold,
-                      color: theme.colorScheme.primary,
-                    ),
+              const SizedBox(width: 4),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  isMonthly ? (monthLabel ?? 'Monthly') : 'Overall',
+                  style: TextStyle(
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.bold,
+                    color: theme.colorScheme.primary,
                   ),
                 ),
-              ],
+              ),
             ],
           ),
           const SizedBox(height: 4),
@@ -796,6 +794,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 }
+
 
 class _MetricSubCard extends StatelessWidget {
   final String title;

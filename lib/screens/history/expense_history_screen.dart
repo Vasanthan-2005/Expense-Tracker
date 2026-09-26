@@ -56,6 +56,9 @@ class _ExpenseHistoryScreenState extends State<ExpenseHistoryScreen> {
 
     if (_balanceLoadedYear == selMonth.year && _balanceLoadedMonth == selMonth.month) return;
 
+    final accountProvider = context.read<AccountProvider>();
+    await accountProvider.setSelectedBalanceMonth(selMonth.year, selMonth.month);
+
     if (isCurrentMonth) {
       if (mounted) {
         setState(() {
@@ -239,10 +242,13 @@ class _ExpenseHistoryScreenState extends State<ExpenseHistoryScreen> {
     }).toList();
 
     int getBalance(Account acc) {
+      if (acc.balanceMode == AccountBalanceMode.monthly) {
+        return accountProvider.getMonthlyAccountBalancePaise(acc.id!);
+      }
       if (isCurrentMonth) {
-        return accountProvider.getAccountBalancePaise(acc.id!);
+        return accountProvider.getOverallAccountBalancePaise(acc.id!);
       } else {
-        return _historicalBalances[acc.id!] ?? accountProvider.getAccountBalancePaise(acc.id!);
+        return _historicalBalances[acc.id!] ?? accountProvider.getOverallAccountBalancePaise(acc.id!);
       }
     }
 
@@ -328,6 +334,7 @@ class _ExpenseHistoryScreenState extends State<ExpenseHistoryScreen> {
                     final prev = DateTime(expenseProvider.selectedMonth.year, expenseProvider.selectedMonth.month - 1, 1);
                     expenseProvider.setSelectedMonth(prev);
                     context.read<ReportsProvider>().setSelectedMonth(prev);
+                    context.read<AccountProvider>().setSelectedBalanceMonth(prev.year, prev.month);
                   },
                 ),
                 Expanded(
@@ -343,6 +350,7 @@ class _ExpenseHistoryScreenState extends State<ExpenseHistoryScreen> {
                         expenseProvider.setSelectedMonth(picked);
                         if (context.mounted) {
                           context.read<ReportsProvider>().setSelectedMonth(picked);
+                          context.read<AccountProvider>().setSelectedBalanceMonth(picked.year, picked.month);
                         }
                       }
                     },
@@ -414,6 +422,7 @@ class _ExpenseHistoryScreenState extends State<ExpenseHistoryScreen> {
                               final next = DateTime(expenseProvider.selectedMonth.year, expenseProvider.selectedMonth.month + 1, 1);
                               expenseProvider.setSelectedMonth(next);
                               context.read<ReportsProvider>().setSelectedMonth(next);
+                              context.read<AccountProvider>().setSelectedBalanceMonth(next.year, next.month);
                             },
                     ),
                   ],
@@ -464,7 +473,7 @@ class _ExpenseHistoryScreenState extends State<ExpenseHistoryScreen> {
                                 Icon(acc.iconData, size: 12, color: accColor),
                                 const SizedBox(width: 5),
                                 Text(
-                                  acc.name,
+                                  acc.balanceMode == AccountBalanceMode.monthly ? '${acc.name} (Mo)' : acc.name,
                                   style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: accColor),
                                 ),
                                 const SizedBox(width: 5),
@@ -619,6 +628,12 @@ class _ExpenseHistoryScreenState extends State<ExpenseHistoryScreen> {
                               onTap: () => AddEditExpenseModal.show(context, existingExpense: exp),
                               onDelete: () async {
                                 await expenseProvider.deleteExpense(exp.id!);
+                                if (context.mounted) {
+                                  await context.read<AccountProvider>().refreshAccounts();
+                                }
+                                if (context.mounted) {
+                                  await context.read<CategoryProvider>().refreshCategorySpent();
+                                }
                                 if (context.mounted) {
                                   context.read<ReportsProvider>().loadReportSummary(
                                     categories: categoryProvider.categories,

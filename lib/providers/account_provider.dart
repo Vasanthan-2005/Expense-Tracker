@@ -8,11 +8,23 @@ import '../core/database/database_helper.dart';
 class AccountProvider with ChangeNotifier {
   bool _isDisposed = false;
   List<Account> _accounts = [];
-  Map<int, int> _accountBalances = {};
+
+  /// Overall balances (all-time) for every account
+  Map<int, int> _overallAccountBalances = {};
+
+  /// Monthly balances keyed by [year][month] — loaded on demand
+  Map<int, int> _monthlyAccountBalances = {};
+
   Account? _defaultAccount;
   List<Income> _recentIncomes = [];
   List<Transfer> _recentTransfers = [];
   bool _isLoading = false;
+
+  /// The currently selected month used for monthly-mode balance display.
+  /// Defaults to the current month and is updated externally when the user
+  /// changes the dashboard/income month selector.
+  int _selectedBalanceYear = DateTime.now().year;
+  int _selectedBalanceMonth = DateTime.now().month;
 
   // Monthly Income History State
   DateTime _selectedIncomeMonth = DateTime(DateTime.now().year, DateTime.now().month, 1);
@@ -36,7 +48,7 @@ class AccountProvider with ChangeNotifier {
   }
 
   List<Account> get accounts => List.unmodifiable(_accounts);
-  Map<int, int> get accountBalances => Map.unmodifiable(_accountBalances);
+  Map<int, int> get accountBalances => Map.unmodifiable(_overallAccountBalances);
   Account? get defaultAccount => _defaultAccount;
   List<Income> get recentIncomes => List.unmodifiable(_recentIncomes);
   List<Transfer> get recentTransfers => List.unmodifiable(_recentTransfers);
@@ -49,21 +61,66 @@ class AccountProvider with ChangeNotifier {
   int? get incomeFilterAccountId => _incomeFilterAccountId;
   String get incomeSearchQuery => _incomeSearchQuery;
 
-  /// Total combined net worth in Paise across all active accounts
+  int get selectedBalanceYear => _selectedBalanceYear;
+  int get selectedBalanceMonth => _selectedBalanceMonth;
+
+  /// Total combined net worth in Paise across all active accounts.
+  /// For accounts in monthly mode, uses the monthly balance for the currently
+  /// selected month. For accounts in overall mode, uses the overall balance.
   int get totalNetWorthPaise {
     int total = 0;
-    for (final bal in _accountBalances.values) {
-      total += bal;
+    for (final account in _accounts) {
+      total += getAccountBalancePaise(account.id!);
     }
     return total;
   }
 
+  /// Returns the appropriate balance for the account based on its balance mode
+  /// and the currently selected balance month.
   int getAccountBalancePaise(int accountId) {
-    return _accountBalances[accountId] ?? 0;
+    final account = _accounts.firstWhere(
+      (a) => a.id == accountId,
+      orElse: () => _accounts.isEmpty
+          ? throw StateError('No accounts loaded')
+          : _accounts.first,
+    );
+    if (account.balanceMode == AccountBalanceMode.monthly) {
+      return _monthlyAccountBalances[accountId] ?? 0;
+    }
+    return _overallAccountBalances[accountId] ?? 0;
+  }
+
+  /// Returns the raw overall (all-time) balance regardless of account mode.
+  int getOverallAccountBalancePaise(int accountId) {
+    return _overallAccountBalances[accountId] ?? 0;
+  }
+
+  /// Returns the raw monthly balance for the selected month regardless of account mode.
+  int getMonthlyAccountBalancePaise(int accountId) {
+    return _monthlyAccountBalances[accountId] ?? 0;
   }
 
   AccountProvider() {
     refreshAccounts();
+  }
+
+  /// Called when the user changes the selected display month (e.g., dashboard
+  /// month switcher). Loads monthly balances for the new month.
+  Future<void> setSelectedBalanceMonth(int year, int month) async {
+    if (_selectedBalanceYear == year && _selectedBalanceMonth == month) return;
+    _selectedBalanceYear = year;
+    _selectedBalanceMonth = month;
+    await _refreshMonthlyBalances();
+    notifyListeners();
+  }
+
+  Future<void> _refreshMonthlyBalances() async {
+    try {
+      _monthlyAccountBalances = await DatabaseHelper.instance
+          .getAccountMonthlyBalances(_selectedBalanceYear, _selectedBalanceMonth);
+    } catch (e) {
+      debugPrint('Error refreshing monthly balances: $e');
+    }
   }
 
   void setSelectedIncomeMonth(DateTime month) {
@@ -124,11 +181,21 @@ class AccountProvider with ChangeNotifier {
 
     try {
       final db = DatabaseHelper.instance;
-      _accounts = await db.getAccounts();
-      _accountBalances = await db.getAccountCalculatedBalances();
-      _defaultAccount = await db.getDefaultAccount();
-      _recentIncomes = await db.getIncomes(limit: 10);
-      _recentTransfers = await db.getTransfers(limit: 10);
+      final results = await Future.wait([
+        db.getAccounts(),
+        db.getAccountCalculatedBalances(),
+        db.getAccountMonthlyBalances(_selectedBalanceYear, _selectedBalanceMonth),
+        db.getDefaultAccount(),
+        db.getIncomes(limit: 10),
+        db.getTransfers(limit: 10),
+      ]);
+
+      _accounts = results[0] as List<Account>;
+      _overallAccountBalances = results[1] as Map<int, int>;
+      _monthlyAccountBalances = results[2] as Map<int, int>;
+      _defaultAccount = results[3] as Account?;
+      _recentIncomes = results[4] as List<Income>;
+      _recentTransfers = results[5] as List<Transfer>;
       await refreshMonthlyIncomes();
     } catch (e) {
       debugPrint('Error refreshing accounts: $e');
@@ -151,6 +218,16 @@ class AccountProvider with ChangeNotifier {
   Future<void> setDefaultAccount(int accountId) async {
     await DatabaseHelper.instance.setDefaultAccount(accountId);
     await refreshAccounts();
+  }
+
+  Future<void> setAccountBalanceMode(int accountId, AccountBalanceMode mode) async {
+    await DatabaseHelper.instance.setAccountBalanceMode(accountId, mode.key);
+    // Update in-memory account list
+    _accounts = _accounts.map((a) {
+      if (a.id == accountId) return a.copyWith(balanceMode: mode);
+      return a;
+    }).toList();
+    notifyListeners();
   }
 
   Future<void> deleteAccount(int accountId) async {

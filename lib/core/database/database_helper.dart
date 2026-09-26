@@ -56,7 +56,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       dbPath,
-      version: 3,
+      version: 4,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
       onConfigure: (db) async {
@@ -91,6 +91,7 @@ class DatabaseHelper {
         icon_font_family TEXT,
         color_value INTEGER NOT NULL,
         is_default INTEGER NOT NULL DEFAULT 0,
+        balance_mode TEXT NOT NULL DEFAULT 'overall',
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL
       )
@@ -283,6 +284,13 @@ class DatabaseHelper {
       } catch (_) {}
     }
 
+    if (oldVersion < 4) {
+      // Add balance_mode column to existing accounts (defaults to 'overall')
+      try {
+        await db.execute("ALTER TABLE accounts ADD COLUMN balance_mode TEXT NOT NULL DEFAULT 'overall'");
+      } catch (_) {}
+    }
+
     try {
       await db.update('accounts', {'name': 'Expense Account'}, where: 'name = ? OR LOWER(name) = ?', whereArgs: ['UPI / Bank', 'upi / bank']);
     } catch (_) {}
@@ -393,8 +401,32 @@ class DatabaseHelper {
     });
   }
 
-  /// Calculates the live dynamic balance for every account:
-  /// Current Balance = opening_balance + sum(incomes) - sum(expenses) + sum(transfers_in) - sum(transfers_out)
+  /// Reads the balance_mode for each account ('overall' or 'monthly')
+  Future<Map<int, String>> getAccountBalanceModes() async {
+    final db = await database;
+    final rows = await db.query('accounts', columns: ['id', 'balance_mode']);
+    final Map<int, String> result = {};
+    for (final row in rows) {
+      final id = row['id'] as int;
+      final mode = (row['balance_mode'] as String?) ?? 'overall';
+      result[id] = mode;
+    }
+    return result;
+  }
+
+  /// Persists the balance_mode for a specific account
+  Future<void> setAccountBalanceMode(int accountId, String mode) async {
+    final db = await database;
+    await db.update(
+      'accounts',
+      {'balance_mode': mode},
+      where: 'id = ?',
+      whereArgs: [accountId],
+    );
+  }
+
+  /// Calculates the live dynamic balance for every account (overall — all history):
+  /// Balance = opening_balance + sum(incomes) - sum(expenses) + sum(transfers_in) - sum(transfers_out)
   Future<Map<int, int>> getAccountCalculatedBalances() async {
     final db = await database;
     final res = await db.rawQuery('''
@@ -407,6 +439,36 @@ class DatabaseHelper {
         - COALESCE((SELECT SUM(amount) FROM transfers WHERE from_account_id = a.id), 0) AS calculated_balance
       FROM accounts a
     ''');
+
+    final Map<int, int> balanceMap = {};
+    for (final row in res) {
+      final id = row['id'] as int;
+      final bal = (row['calculated_balance'] as int?) ?? 0;
+      balanceMap[id] = bal;
+    }
+    return balanceMap;
+  }
+
+  /// Calculates the monthly-only balance for every account for a specific month.
+  /// Monthly balance = sum(incomes in month) - sum(expenses in month) + sum(transfers_in in month) - sum(transfers_out in month)
+  /// NOTE: Opening balance is intentionally excluded — monthly mode starts from 0 each month.
+  Future<Map<int, int>> getAccountMonthlyBalances(int year, int month) async {
+    final db = await database;
+    final yearStr = year.toString().padLeft(4, '0');
+    final monthStr = month.toString().padLeft(2, '0');
+    final lastDay = DateTime(year, month + 1, 0).day.toString().padLeft(2, '0');
+    final startIso = '$yearStr-$monthStr-01';
+    final endIso = '$yearStr-$monthStr-$lastDay';
+
+    final res = await db.rawQuery('''
+      SELECT 
+        a.id,
+        COALESCE((SELECT SUM(amount) FROM incomes WHERE account_id = a.id AND date >= ? AND date <= ?), 0)
+        - COALESCE((SELECT SUM(amount) FROM expenses WHERE account_id = a.id AND date >= ? AND date <= ?), 0)
+        + COALESCE((SELECT SUM(amount) FROM transfers WHERE to_account_id = a.id AND date >= ? AND date <= ?), 0)
+        - COALESCE((SELECT SUM(amount) FROM transfers WHERE from_account_id = a.id AND date >= ? AND date <= ?), 0) AS calculated_balance
+      FROM accounts a
+    ''', [startIso, endIso, startIso, endIso, startIso, endIso, startIso, endIso]);
 
     final Map<int, int> balanceMap = {};
     for (final row in res) {

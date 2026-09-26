@@ -34,6 +34,7 @@ class _AddEditAccountModalState extends State<AddEditAccountModal> {
   int _selectedIconCode = Icons.account_balance.codePoint;
   int _selectedColorValue = 0xFF10B981; // Emerald
   bool _isDefault = false;
+  AccountBalanceMode _balanceMode = AccountBalanceMode.overall;
   bool _isSaving = false;
 
   static const List<IconData> availableIcons = [
@@ -70,6 +71,7 @@ class _AddEditAccountModalState extends State<AddEditAccountModal> {
       _selectedIconCode = acc.iconCodePoint;
       _selectedColorValue = acc.colorValue;
       _isDefault = acc.isDefault;
+      _balanceMode = acc.balanceMode;
     }
   }
 
@@ -106,6 +108,7 @@ class _AddEditAccountModalState extends State<AddEditAccountModal> {
       iconCodePoint: _selectedIconCode,
       colorValue: _selectedColorValue,
       isDefault: _isDefault,
+      balanceMode: _balanceMode,
       createdAt: widget.existingAccount?.createdAt ?? now,
       updatedAt: now,
     );
@@ -335,6 +338,34 @@ class _AddEditAccountModalState extends State<AddEditAccountModal> {
               subtitle: const Text('Automatically selected for quick expenses & floating bubble'),
               value: _isDefault,
               onChanged: (val) => setState(() => _isDefault = val),
+            ),
+            const SizedBox(height: 16),
+
+            // Balance Calculation Mode Selector
+            Text('Balance Calculation Mode', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            SegmentedButton<AccountBalanceMode>(
+              segments: const [
+                ButtonSegment(
+                  value: AccountBalanceMode.overall,
+                  label: Text('Overall Balance'),
+                  icon: Icon(Icons.all_inclusive_rounded, size: 16),
+                ),
+                ButtonSegment(
+                  value: AccountBalanceMode.monthly,
+                  label: Text('Monthly Balance'),
+                  icon: Icon(Icons.calendar_month_rounded, size: 16),
+                ),
+              ],
+              selected: {_balanceMode},
+              onSelectionChanged: (set) => setState(() => _balanceMode = set.first),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              _balanceMode == AccountBalanceMode.monthly
+                  ? '• Starts from ₹0 each month and only counts this month\'s transactions.'
+                  : '• Cumulative balance from all historical transactions.',
+              style: TextStyle(fontSize: 11.5, color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.7)),
             ),
             const SizedBox(height: 24),
 

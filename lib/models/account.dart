@@ -2,6 +2,23 @@ import 'package:flutter/material.dart';
 
 import '../core/utils/icon_data_helper.dart';
 
+enum AccountBalanceMode {
+  overall,
+  monthly;
+
+  String get key => name; // 'overall' or 'monthly'
+
+  static AccountBalanceMode fromKey(String? key) {
+    if (key == 'monthly') return AccountBalanceMode.monthly;
+    return AccountBalanceMode.overall;
+  }
+
+  String get label => this == overall ? 'Overall Balance' : 'Monthly Balance';
+  String get description => this == overall
+      ? 'Shows cumulative balance from all history'
+      : 'Shows balance only for the selected month';
+}
+
 class Account {
   final int? id;
   final String name;
@@ -10,6 +27,7 @@ class Account {
   final String? iconFontFamily;
   final int colorValue;
   final bool isDefault;
+  final AccountBalanceMode balanceMode;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -21,6 +39,7 @@ class Account {
     this.iconFontFamily,
     required this.colorValue,
     this.isDefault = false,
+    this.balanceMode = AccountBalanceMode.overall,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -45,6 +64,7 @@ class Account {
       'icon_font_family': iconFontFamily,
       'color_value': colorValue,
       'is_default': isDefault ? 1 : 0,
+      'balance_mode': balanceMode.key,
       'created_at': createdAt.millisecondsSinceEpoch,
       'updated_at': updatedAt.millisecondsSinceEpoch,
     };
@@ -59,6 +79,7 @@ class Account {
       iconFontFamily: map['icon_font_family'] as String?,
       colorValue: map['color_value'] as int,
       isDefault: (map['is_default'] as int?) == 1,
+      balanceMode: AccountBalanceMode.fromKey(map['balance_mode'] as String?),
       createdAt: DateTime.fromMillisecondsSinceEpoch(map['created_at'] as int),
       updatedAt: DateTime.fromMillisecondsSinceEpoch(map['updated_at'] as int),
     );
@@ -72,6 +93,7 @@ class Account {
     String? iconFontFamily,
     int? colorValue,
     bool? isDefault,
+    AccountBalanceMode? balanceMode,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
@@ -83,6 +105,7 @@ class Account {
       iconFontFamily: iconFontFamily ?? this.iconFontFamily,
       colorValue: colorValue ?? this.colorValue,
       isDefault: isDefault ?? this.isDefault,
+      balanceMode: balanceMode ?? this.balanceMode,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );

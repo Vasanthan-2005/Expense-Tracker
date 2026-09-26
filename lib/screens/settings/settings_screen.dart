@@ -9,12 +9,14 @@ import '../../services/export_import_service.dart';
 import '../../services/native_bubble_service.dart';
 import '../../core/database/database_helper.dart';
 import '../../models/app_settings.dart';
+import '../../models/account.dart';
 import '../categories/categories_screen.dart';
 import '../../providers/account_provider.dart';
 import 'package:file_picker/file_picker.dart';
 import 'category_order_screen.dart';
 import '../../core/utils/currency_formatter.dart';
 import '../celebration/celebrations_screen.dart';
+import 'update_app_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -867,7 +869,12 @@ class _SettingsScreenState extends State<SettingsScreen>
             ),
             const SizedBox(height: 18),
 
-            // 5. FIFTH: Data Import & Export
+            // 5. NEW: Balance Calculation Mode per Account
+            _SectionHeader(title: 'Balance Calculation', icon: Icons.account_balance_rounded),
+            _BalanceCalculationSection(),
+            const SizedBox(height: 18),
+
+            // 6. SIXTH: Data Import & Export
             _SectionHeader(title: 'Data Import & Export', icon: Icons.folder_shared_outlined),
             _ModernCard(
               children: [
@@ -918,6 +925,20 @@ class _SettingsScreenState extends State<SettingsScreen>
             _SectionHeader(title: 'About', icon: Icons.info_outline_rounded),
             _ModernCard(
               children: [
+                _ModernTile(
+                  icon: Icons.system_update_rounded,
+                  iconColor: const Color(0xFF6366F1),
+                  title: 'Update App',
+                  subtitle: 'Check for updates from GitHub Releases',
+                  trailing: const Icon(Icons.chevron_right, size: 18, color: Colors.grey),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (ctx) => const UpdateAppScreen()),
+                    );
+                  },
+                ),
+                const Divider(height: 1),
                 const _ModernTile(
                   icon: Icons.verified_user_outlined,
                   iconColor: Color(0xFF10B981),
@@ -1120,6 +1141,157 @@ class _ThemeOptionItem extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Shows per-account balance mode selection (Overall vs Monthly).
+class _BalanceCalculationSection extends StatelessWidget {
+  const _BalanceCalculationSection();
+
+  @override
+  Widget build(BuildContext context) {
+    final accountProvider = context.watch<AccountProvider>();
+    final accounts = accountProvider.accounts;
+
+    if (accounts.isEmpty) {
+      return _ModernCard(
+        children: [
+          const Padding(
+            padding: EdgeInsets.all(16),
+            child: Text(
+              'No accounts found. Add an account to configure balance modes.',
+              style: TextStyle(fontSize: 13, color: Colors.grey),
+            ),
+          ),
+        ],
+      );
+    }
+
+    return _ModernCard(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Choose how each account calculates its displayed balance.',
+                style: TextStyle(fontSize: 12, color: Colors.grey, height: 1.4),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                '• Overall: Cumulative balance from all transactions\n'
+                '• Monthly: Only transactions in the selected month (resets to ₹0 each month)',
+                style: TextStyle(fontSize: 11, color: Colors.grey, height: 1.5),
+              ),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        ...accounts.asMap().entries.map((entry) {
+          final index = entry.key;
+          final account = entry.value;
+          final accColor = Color(account.colorValue);
+          final isLast = index == accounts.length - 1;
+
+          return Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(7),
+                      decoration: BoxDecoration(
+                        color: accColor.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(9),
+                      ),
+                      child: Icon(account.iconData, color: accColor, size: 18),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        account.name,
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    _BalanceModeChips(
+                      accountId: account.id!,
+                      currentMode: account.balanceMode,
+                      onModeChanged: (mode) async {
+                        await accountProvider.setAccountBalanceMode(account.id!, mode);
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              if (!isLast) const Divider(height: 1),
+            ],
+          );
+        }),
+      ],
+    );
+  }
+}
+
+class _BalanceModeChips extends StatelessWidget {
+  final int accountId;
+  final AccountBalanceMode currentMode;
+  final ValueChanged<AccountBalanceMode> onModeChanged;
+
+  const _BalanceModeChips({
+    required this.accountId,
+    required this.currentMode,
+    required this.onModeChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    Widget chip(AccountBalanceMode mode, String label) {
+      final selected = currentMode == mode;
+      return GestureDetector(
+        onTap: selected ? null : () {
+          HapticFeedback.selectionClick();
+          onModeChanged(mode);
+        },
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
+            color: selected
+                ? theme.colorScheme.primary
+                : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: selected
+                  ? theme.colorScheme.primary
+                  : theme.dividerColor.withValues(alpha: 0.4),
+            ),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+              color: selected ? Colors.white : theme.textTheme.bodySmall?.color,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        chip(AccountBalanceMode.overall, 'Overall'),
+        const SizedBox(width: 6),
+        chip(AccountBalanceMode.monthly, 'Monthly'),
+      ],
     );
   }
 }
