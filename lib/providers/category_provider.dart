@@ -85,9 +85,6 @@ class CategoryProvider with ChangeNotifier {
   }
 
   Future<void> reorderCategories(int oldIndex, int newIndex) async {
-    if (oldIndex < newIndex) {
-      newIndex -= 1;
-    }
     if (oldIndex == newIndex) return;
 
     final item = _categories.removeAt(oldIndex);

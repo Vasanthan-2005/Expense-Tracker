@@ -46,7 +46,7 @@ class CategoryOrderScreen extends StatelessWidget {
                   child: ReorderableListView.builder(
                     padding: const EdgeInsets.only(bottom: 80),
                     itemCount: categories.length,
-                    onReorder: (oldIndex, newIndex) {
+                    onReorderItem: (oldIndex, newIndex) {
                       categoryProvider.reorderCategories(oldIndex, newIndex);
                     },
                     itemBuilder: (ctx, index) {
