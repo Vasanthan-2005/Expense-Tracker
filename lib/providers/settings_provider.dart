@@ -38,6 +38,16 @@ class SettingsProvider with ChangeNotifier {
   bool get isPositiveOnlyCelebration => _settings.isPositiveOnlyCelebration;
   bool get isLoading => _isLoading;
 
+  // Quick Credit getters
+  int? get salaryCreditAmountPaise => _settings.salaryCreditAmountPaise;
+  bool get isSalaryCreditEnabled => _settings.isSalaryCreditEnabled;
+  bool get isSalaryCreditAmountSet => _settings.isSalaryCreditAmountSet;
+  double get salaryCreditAmountDouble => _settings.salaryCreditAmountDouble;
+  int? get monthlyExpenseAmountPaise => _settings.monthlyExpenseAmountPaise;
+  bool get isMonthlyExpenseEnabled => _settings.isMonthlyExpenseEnabled;
+  bool get isMonthlyExpenseAmountSet => _settings.isMonthlyExpenseAmountSet;
+  double get monthlyExpenseAmountDouble => _settings.monthlyExpenseAmountDouble;
+
   SettingsProvider() {
     loadSettings();
   }
@@ -153,6 +163,36 @@ class SettingsProvider with ChangeNotifier {
     _settings = _settings.copyWith(celebrationMode: mode);
     notifyListeners();
     await DatabaseHelper.instance.updateSetting('celebration_mode', mode);
+  }
+
+  Future<void> setSalaryCreditAmount(int? amountPaise) async {
+    _settings = _settings.copyWith(
+      salaryCreditAmountPaise: amountPaise,
+      resetSalaryCreditAmount: amountPaise == null,
+    );
+    notifyListeners();
+    await DatabaseHelper.instance.updateSetting('salary_credit_amount', amountPaise?.toString() ?? '');
+  }
+
+  Future<void> setSalaryCreditEnabled(bool enabled) async {
+    _settings = _settings.copyWith(isSalaryCreditEnabled: enabled);
+    notifyListeners();
+    await DatabaseHelper.instance.updateSetting('salary_credit_enabled', enabled ? 'true' : 'false');
+  }
+
+  Future<void> setMonthlyExpenseAmount(int? amountPaise) async {
+    _settings = _settings.copyWith(
+      monthlyExpenseAmountPaise: amountPaise,
+      resetMonthlyExpenseAmount: amountPaise == null,
+    );
+    notifyListeners();
+    await DatabaseHelper.instance.updateSetting('monthly_expense_amount', amountPaise?.toString() ?? '');
+  }
+
+  Future<void> setMonthlyExpenseEnabled(bool enabled) async {
+    _settings = _settings.copyWith(isMonthlyExpenseEnabled: enabled);
+    notifyListeners();
+    await DatabaseHelper.instance.updateSetting('monthly_expense_enabled', enabled ? 'true' : 'false');
   }
 
   Future<void> reloadSettings() async {

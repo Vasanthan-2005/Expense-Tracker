@@ -531,6 +531,152 @@ class _SettingsScreenState extends State<SettingsScreen>
     );
   }
 
+  void _showSalaryCreditAmountDialog(BuildContext context) {
+    final settingsProvider = context.read<SettingsProvider>();
+    final currency = settingsProvider.currencySymbol;
+    final currentPaise = settingsProvider.salaryCreditAmountPaise;
+    final currentText = currentPaise != null ? (currentPaise / 100.0).toStringAsFixed(0) : '';
+    final controller = TextEditingController(text: currentText);
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.payments_rounded, color: Color(0xFF3B82F6)),
+            SizedBox(width: 10),
+            Text('Salary Credit Amount', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Set your monthly salary amount. Tapping "Salary Credited" on the Salary Account card will instantly add this income.',
+              style: TextStyle(fontSize: 13, height: 1.4),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: controller,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              autofocus: true,
+              decoration: InputDecoration(
+                labelText: 'Salary Amount',
+                prefixText: '$currency ',
+                hintText: 'e.g. 50000',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          if (settingsProvider.isSalaryCreditAmountSet)
+            TextButton(
+              onPressed: () async {
+                await settingsProvider.setSalaryCreditAmount(null);
+                if (ctx.mounted) Navigator.pop(ctx);
+              },
+              child: const Text('Clear', style: TextStyle(color: Colors.red)),
+            ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              final text = controller.text.trim();
+              if (text.isEmpty) {
+                await settingsProvider.setSalaryCreditAmount(null);
+              } else {
+                final val = double.tryParse(text);
+                if (val != null && val > 0) {
+                  await settingsProvider.setSalaryCreditAmount((val * 100).round());
+                }
+              }
+              if (ctx.mounted) Navigator.pop(ctx);
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showMonthlyExpenseAmountDialog(BuildContext context) {
+    final settingsProvider = context.read<SettingsProvider>();
+    final currency = settingsProvider.currencySymbol;
+    final currentPaise = settingsProvider.monthlyExpenseAmountPaise;
+    final currentText = currentPaise != null ? (currentPaise / 100.0).toStringAsFixed(0) : '';
+    final controller = TextEditingController(text: currentText);
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.account_balance_wallet_rounded, color: Color(0xFF6366F1)),
+            SizedBox(width: 10),
+            Text('Expense Transfer Amount', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Set a fixed amount to transfer from your Salary Account to your Expense Account each month (e.g. your monthly expense budget).',
+              style: TextStyle(fontSize: 13, height: 1.4),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: controller,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              autofocus: true,
+              decoration: InputDecoration(
+                labelText: 'Expense Amount',
+                prefixText: '$currency ',
+                hintText: 'e.g. 20000',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          if (settingsProvider.isMonthlyExpenseAmountSet)
+            TextButton(
+              onPressed: () async {
+                await settingsProvider.setMonthlyExpenseAmount(null);
+                if (ctx.mounted) Navigator.pop(ctx);
+              },
+              child: const Text('Clear', style: TextStyle(color: Colors.red)),
+            ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              final text = controller.text.trim();
+              if (text.isEmpty) {
+                await settingsProvider.setMonthlyExpenseAmount(null);
+              } else {
+                final val = double.tryParse(text);
+                if (val != null && val > 0) {
+                  await settingsProvider.setMonthlyExpenseAmount((val * 100).round());
+                }
+              }
+              if (ctx.mounted) Navigator.pop(ctx);
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showCurrencyPickerDialog(BuildContext context) {
     final settingsProvider = context.read<SettingsProvider>();
     final current = settingsProvider.currencySymbol;
@@ -629,8 +775,8 @@ class _SettingsScreenState extends State<SettingsScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 1. FIRST: Appearance & Theme (ON TOP)
-            _SectionHeader(title: 'Appearance', icon: Icons.palette_outlined),
+            // 1. APPEARANCE & DISPLAY
+            const _SectionHeader(title: 'Appearance & Display', icon: Icons.palette_outlined),
             _ModernCard(
               children: [
                 Padding(
@@ -704,14 +850,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                   ),
                   onTap: () => _showCurrencyPickerDialog(context),
                 ),
-              ],
-            ),
-            const SizedBox(height: 18),
-
-            // 2. SECOND: Quick Access / Floating Quick Expense
-            _SectionHeader(title: 'Quick Access', icon: Icons.bolt_rounded),
-            _ModernCard(
-              children: [
+                const Divider(height: 1),
                 SwitchListTile(
                   secondary: Container(
                     padding: const EdgeInsets.all(8),
@@ -724,8 +863,8 @@ class _SettingsScreenState extends State<SettingsScreen>
                   title: const Text('Floating Quick-Add Bubble', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                   subtitle: Text(
                     _overlayPermissionGranted
-                        ? 'Appears over other apps for fast expense logging'
-                        : 'Requires Android Overlay permission',
+                        ? 'Quick logging shortcut over other apps'
+                        : 'Tap to grant Android Overlay permission',
                     style: TextStyle(
                       fontSize: 11.5,
                       color: _overlayPermissionGranted ? const Color(0xFF10B981) : null,
@@ -756,17 +895,17 @@ class _SettingsScreenState extends State<SettingsScreen>
             ),
             const SizedBox(height: 18),
 
-            // 3. THIRD: Budgets & Celebrations
-            _SectionHeader(title: 'Budgets & Celebrations', icon: Icons.emoji_events_outlined),
+            // 2. BUDGETS & GOALS
+            const _SectionHeader(title: 'Budgets & Goals', icon: Icons.savings_outlined),
             _ModernCard(
               children: [
                 _ModernTile(
-                  icon: Icons.savings_outlined,
+                  icon: Icons.track_changes_rounded,
                   iconColor: const Color(0xFF10B981),
-                  title: 'Overall Monthly Budget',
+                  title: 'Monthly Spending Budget',
                   subtitle: settingsProvider.isOverallBudgetSet
-                      ? 'Limit: ${CurrencyFormatter.formatPaise(settingsProvider.overallMonthlyBudgetPaise!, symbol: settingsProvider.currencySymbol)} / month'
-                      : 'Not set (tap to set global spending limit)',
+                      ? 'Global limit: ${CurrencyFormatter.formatPaise(settingsProvider.overallMonthlyBudgetPaise!, symbol: settingsProvider.currencySymbol)} / month'
+                      : 'Set a global spending limit to track targets',
                   trailing: settingsProvider.isOverallBudgetSet
                       ? Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -784,10 +923,10 @@ class _SettingsScreenState extends State<SettingsScreen>
                 ),
                 const Divider(height: 1),
                 _ModernTile(
-                  icon: Icons.celebration_rounded,
+                  icon: Icons.emoji_events_rounded,
                   iconColor: const Color(0xFFF59E0B),
-                  title: 'Month-End Celebrations & Hub',
-                  subtitle: 'Popups on/off, review modes, milestones & full history',
+                  title: 'Celebrations & Milestones',
+                  subtitle: 'Month-end popups, achievement history & streaks',
                   trailing: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                     decoration: BoxDecoration(
@@ -817,32 +956,172 @@ class _SettingsScreenState extends State<SettingsScreen>
             ),
             const SizedBox(height: 18),
 
-            // 4. FOURTH: Categories & Accounts
-            _SectionHeader(title: 'Categories & Accounts', icon: Icons.category_outlined),
+            // 3. ACCOUNTS & QUICK CREDITS
+            const _SectionHeader(title: 'Accounts & Quick Credits', icon: Icons.account_balance_wallet_outlined),
+            Consumer<SettingsProvider>(
+              builder: (ctx, sp, _) => _ModernCard(
+                children: [
+                  SwitchListTile(
+                    secondary: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF06B6D4).withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(Icons.account_balance_wallet_outlined, color: Color(0xFF06B6D4), size: 20),
+                    ),
+                    title: const Text('Accounts Feature', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                    subtitle: const Text('Enable or disable accounts tab & live balances', style: TextStyle(fontSize: 11.5)),
+                    value: sp.isAccountsSectionEnabled,
+                    onChanged: (enabled) => sp.setAccountsSectionEnabled(enabled),
+                  ),
+                  const Divider(height: 1),
+                  ListTile(
+                    leading: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(Icons.payments_rounded, color: Color(0xFF10B981), size: 20),
+                    ),
+                    title: const Text('Salary Credited Button', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                    subtitle: Text(
+                      sp.isSalaryCreditEnabled
+                          ? (sp.isSalaryCreditAmountSet
+                              ? 'Amount: ${CurrencyFormatter.formatPaise(sp.salaryCreditAmountPaise!, symbol: sp.currencySymbol)} (tap to edit)'
+                              : 'Tap to set monthly salary amount')
+                          : 'Quick 1-tap credit button on Salary Account',
+                      style: const TextStyle(fontSize: 11.5),
+                    ),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (sp.isSalaryCreditEnabled && sp.isSalaryCreditAmountSet)
+                          InkWell(
+                            onTap: () => _showSalaryCreditAmountDialog(context),
+                            borderRadius: BorderRadius.circular(8),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              margin: const EdgeInsets.only(right: 6),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.4)),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    CurrencyFormatter.formatPaise(sp.salaryCreditAmountPaise!, symbol: sp.currencySymbol),
+                                    style: const TextStyle(
+                                      color: Color(0xFF10B981),
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  const Icon(Icons.edit, size: 12, color: Color(0xFF10B981)),
+                                ],
+                              ),
+                            ),
+                          ),
+                        Switch(
+                          value: sp.isSalaryCreditEnabled,
+                          onChanged: (val) {
+                            sp.setSalaryCreditEnabled(val);
+                            if (val && !sp.isSalaryCreditAmountSet) {
+                              _showSalaryCreditAmountDialog(context);
+                            }
+                          },
+                        ),
+                      ],
+                    ),
+                    onTap: sp.isSalaryCreditEnabled ? () => _showSalaryCreditAmountDialog(context) : null,
+                  ),
+                  const Divider(height: 1),
+                  ListTile(
+                    leading: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF6366F1).withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(Icons.account_balance_wallet_rounded, color: Color(0xFF6366F1), size: 20),
+                    ),
+                    title: const Text('Add Expense Button', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                    subtitle: Text(
+                      sp.isMonthlyExpenseEnabled
+                          ? (sp.isMonthlyExpenseAmountSet
+                              ? 'Amount: ${CurrencyFormatter.formatPaise(sp.monthlyExpenseAmountPaise!, symbol: sp.currencySymbol)} (tap to edit)'
+                              : 'Tap to set monthly expense budget')
+                          : 'Quick 1-tap credit button on Expense Account',
+                      style: const TextStyle(fontSize: 11.5),
+                    ),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (sp.isMonthlyExpenseEnabled && sp.isMonthlyExpenseAmountSet)
+                          InkWell(
+                            onTap: () => _showMonthlyExpenseAmountDialog(context),
+                            borderRadius: BorderRadius.circular(8),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              margin: const EdgeInsets.only(right: 6),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF6366F1).withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: const Color(0xFF6366F1).withValues(alpha: 0.4)),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    CurrencyFormatter.formatPaise(sp.monthlyExpenseAmountPaise!, symbol: sp.currencySymbol),
+                                    style: const TextStyle(
+                                      color: Color(0xFF6366F1),
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  const Icon(Icons.edit, size: 12, color: Color(0xFF6366F1)),
+                                ],
+                              ),
+                            ),
+                          ),
+                        Switch(
+                          value: sp.isMonthlyExpenseEnabled,
+                          onChanged: (val) {
+                            sp.setMonthlyExpenseEnabled(val);
+                            if (val && !sp.isMonthlyExpenseAmountSet) {
+                              _showMonthlyExpenseAmountDialog(context);
+                            }
+                          },
+                        ),
+                      ],
+                    ),
+                    onTap: sp.isMonthlyExpenseEnabled ? () => _showMonthlyExpenseAmountDialog(context) : null,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 18),
+
+            // 4. ACCOUNT BALANCE MODES
+            const _SectionHeader(title: 'Account Balance Modes', icon: Icons.tune_rounded),
+            const _BalanceCalculationSection(),
+            const SizedBox(height: 18),
+
+            // 5. CATEGORIES
+            const _SectionHeader(title: 'Categories', icon: Icons.category_outlined),
             _ModernCard(
               children: [
-                SwitchListTile(
-                  secondary: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF06B6D4).withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Icon(Icons.account_balance_wallet_outlined, color: Color(0xFF06B6D4), size: 20),
-                  ),
-                  title: const Text('Accounts Section', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                  subtitle: const Text('Enable or disable accounts, balances & money transfers', style: TextStyle(fontSize: 11.5)),
-                  value: settingsProvider.isAccountsSectionEnabled,
-                  onChanged: (enabled) {
-                    settingsProvider.setAccountsSectionEnabled(enabled);
-                  },
-                ),
-                const Divider(height: 1),
                 _ModernTile(
                   icon: Icons.category_outlined,
                   iconColor: const Color(0xFF8B5CF6),
                   title: 'Manage Categories',
-                  subtitle: 'Add, edit, delete categories & set budget limits',
+                  subtitle: 'Add, edit, delete categories & individual budgets',
                   trailing: const Icon(Icons.chevron_right, size: 18, color: Colors.grey),
                   onTap: () {
                     Navigator.push(
@@ -869,24 +1148,10 @@ class _SettingsScreenState extends State<SettingsScreen>
             ),
             const SizedBox(height: 18),
 
-            // 5. NEW: Balance Calculation Mode per Account
-            _SectionHeader(title: 'Balance Calculation', icon: Icons.account_balance_rounded),
-            _BalanceCalculationSection(),
-            const SizedBox(height: 18),
-
-            // 6. SIXTH: Data Import & Export
-            _SectionHeader(title: 'Data Import & Export', icon: Icons.folder_shared_outlined),
+            // 6. BACKUP & DATA
+            const _SectionHeader(title: 'Backup & Data', icon: Icons.folder_shared_outlined),
             _ModernCard(
               children: [
-                _ModernTile(
-                  icon: Icons.folder_open_outlined,
-                  iconColor: const Color(0xFF0284C7),
-                  title: 'Export Storage Folder',
-                  subtitle: settingsProvider.exportFolderPath,
-                  trailing: const Icon(Icons.edit_outlined, size: 18, color: Colors.grey),
-                  onTap: () => _showEditExportPathDialog(context),
-                ),
-                const Divider(height: 1),
                 _ModernTile(
                   icon: Icons.upload_file_rounded,
                   iconColor: const Color(0xFF10B981),
@@ -910,10 +1175,19 @@ class _SettingsScreenState extends State<SettingsScreen>
                 ),
                 const Divider(height: 1),
                 _ModernTile(
+                  icon: Icons.folder_open_outlined,
+                  iconColor: const Color(0xFF0284C7),
+                  title: 'Export Storage Folder',
+                  subtitle: settingsProvider.exportFolderPath,
+                  trailing: const Icon(Icons.edit_outlined, size: 18, color: Colors.grey),
+                  onTap: () => _showEditExportPathDialog(context),
+                ),
+                const Divider(height: 1),
+                _ModernTile(
                   icon: Icons.delete_forever_rounded,
                   iconColor: theme.colorScheme.error,
                   title: 'Clear All Data',
-                  subtitle: 'Delete all transactions and custom categories',
+                  subtitle: 'Delete all transactions and reset data',
                   isDestructive: true,
                   onTap: _confirmClearAllData,
                 ),
@@ -921,8 +1195,8 @@ class _SettingsScreenState extends State<SettingsScreen>
             ),
             const SizedBox(height: 18),
 
-            // 6. SIXTH: About App
-            _SectionHeader(title: 'About', icon: Icons.info_outline_rounded),
+            // 7. ABOUT & INFO
+            const _SectionHeader(title: 'About', icon: Icons.info_outline_rounded),
             _ModernCard(
               children: [
                 _ModernTile(
@@ -949,7 +1223,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                 Padding(
                   padding: const EdgeInsets.all(16),
                   child: Text(
-                    'This application stores all your financial data 100% locally on your device with no cloud servers, no ads, and no data tracking.',
+                    'All your financial data is stored 100% locally on your device with no cloud servers, no ads, and no tracking.',
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.7),
                       height: 1.4,

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../../models/app_settings.dart';
 
 class AppTheme {
@@ -58,8 +59,10 @@ class AppTheme {
 
   static ThemeData _buildLightTheme() {
     final base = ThemeData.light(useMaterial3: true);
+    final textTheme = GoogleFonts.interTextTheme(base.textTheme);
     return base.copyWith(
       scaffoldBackgroundColor: lightBackground,
+      textTheme: textTheme,
       colorScheme: const ColorScheme.light(
         primary: primaryColor,
         secondary: primaryAccent,
@@ -77,13 +80,13 @@ class AppTheme {
         ),
         margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 16),
       ),
-      appBarTheme: const AppBarTheme(
+      appBarTheme: AppBarTheme(
         backgroundColor: lightBackground,
         foregroundColor: lightOnSurface,
         elevation: 0,
         scrolledUnderElevation: 0,
         centerTitle: false,
-        titleTextStyle: TextStyle(
+        titleTextStyle: GoogleFonts.inter(
           color: lightOnSurface,
           fontSize: 20,
           fontWeight: FontWeight.bold,
@@ -136,8 +139,10 @@ class AppTheme {
 
   static ThemeData _buildDarkTheme() {
     final base = ThemeData.dark(useMaterial3: true);
+    final textTheme = GoogleFonts.interTextTheme(base.textTheme);
     return base.copyWith(
       scaffoldBackgroundColor: darkBackground,
+      textTheme: textTheme,
       colorScheme: const ColorScheme.dark(
         primary: primaryColor,
         secondary: primaryAccent,
@@ -155,13 +160,13 @@ class AppTheme {
         ),
         margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 16),
       ),
-      appBarTheme: const AppBarTheme(
+      appBarTheme: AppBarTheme(
         backgroundColor: darkBackground,
         foregroundColor: darkOnSurface,
         elevation: 0,
         scrolledUnderElevation: 0,
         centerTitle: false,
-        titleTextStyle: TextStyle(
+        titleTextStyle: GoogleFonts.inter(
           color: darkOnSurface,
           fontSize: 20,
           fontWeight: FontWeight.bold,
@@ -214,8 +219,10 @@ class AppTheme {
 
   static ThemeData _buildPitchBlackTheme() {
     final base = ThemeData.dark(useMaterial3: true);
+    final textTheme = GoogleFonts.interTextTheme(base.textTheme);
     return base.copyWith(
       scaffoldBackgroundColor: pitchBlackBackground,
+      textTheme: textTheme,
       colorScheme: const ColorScheme.dark(
         primary: pitchBlackPrimary,
         secondary: primaryAccent,
@@ -233,13 +240,13 @@ class AppTheme {
         ),
         margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 16),
       ),
-      appBarTheme: const AppBarTheme(
+      appBarTheme: AppBarTheme(
         backgroundColor: pitchBlackBackground,
         foregroundColor: pitchBlackOnSurface,
         elevation: 0,
         scrolledUnderElevation: 0,
         centerTitle: false,
-        titleTextStyle: TextStyle(
+        titleTextStyle: GoogleFonts.inter(
           color: pitchBlackOnSurface,
           fontSize: 20,
           fontWeight: FontWeight.bold,
@@ -292,8 +299,10 @@ class AppTheme {
 
   static ThemeData _buildEmeraldTheme() {
     final base = ThemeData.dark(useMaterial3: true);
+    final textTheme = GoogleFonts.interTextTheme(base.textTheme);
     return base.copyWith(
       scaffoldBackgroundColor: emeraldBackground,
+      textTheme: textTheme,
       colorScheme: const ColorScheme.dark(
         primary: emeraldPrimary,
         secondary: Color(0xFF34D399),
@@ -311,13 +320,13 @@ class AppTheme {
         ),
         margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 16),
       ),
-      appBarTheme: const AppBarTheme(
+      appBarTheme: AppBarTheme(
         backgroundColor: emeraldBackground,
         foregroundColor: emeraldOnSurface,
         elevation: 0,
         scrolledUnderElevation: 0,
         centerTitle: false,
-        titleTextStyle: TextStyle(
+        titleTextStyle: GoogleFonts.inter(
           color: emeraldOnSurface,
           fontSize: 20,
           fontWeight: FontWeight.bold,

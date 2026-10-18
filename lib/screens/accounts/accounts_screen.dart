@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../models/account.dart';
+import '../../models/income.dart';
 import '../../providers/account_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../core/utils/currency_formatter.dart';
@@ -9,7 +11,6 @@ import 'add_edit_account_modal.dart';
 import '../income/add_edit_income_modal.dart';
 import '../income/income_history_modal.dart';
 import '../transfer/transfer_money_modal.dart';
-import '../transfer/transfer_history_modal.dart';
 
 class AccountsScreen extends StatelessWidget {
   const AccountsScreen({super.key});
@@ -31,11 +32,6 @@ class AccountsScreen extends StatelessWidget {
             icon: const Icon(Icons.receipt_long_rounded),
             tooltip: 'Income History',
             onPressed: () => IncomeHistoryModal.show(context),
-          ),
-          IconButton(
-            icon: const Icon(Icons.swap_horiz_rounded),
-            tooltip: 'Transfer History',
-            onPressed: () => TransferHistoryModal.show(context),
           ),
           IconButton(
             icon: const Icon(Icons.add_card_rounded),
@@ -333,6 +329,60 @@ class AccountsScreen extends StatelessWidget {
                                   ),
                                 ],
                               ),
+                              // Quick Credit Buttons
+                              Builder(builder: (context) {
+                                final sp = context.watch<SettingsProvider>();
+                                final lowerName = account.name.toLowerCase();
+                                final isSalaryAcc = lowerName.contains('salary');
+                                final isExpenseAcc = account.isDefault || lowerName.contains('expense');
+
+                                final showSalaryBtn = isSalaryAcc &&
+                                    sp.isSalaryCreditEnabled &&
+                                    sp.isSalaryCreditAmountSet;
+                                final showExpenseBtn = isExpenseAcc &&
+                                    sp.isMonthlyExpenseEnabled &&
+                                    sp.isMonthlyExpenseAmountSet;
+
+                                if (!showSalaryBtn && !showExpenseBtn) return const SizedBox.shrink();
+
+                                return Padding(
+                                  padding: const EdgeInsets.only(top: 10),
+                                  child: Wrap(
+                                    spacing: 8,
+                                    runSpacing: 6,
+                                    children: [
+                                      if (showSalaryBtn)
+                                        _QuickCreditButton(
+                                          label: 'Salary Credited',
+                                          amount: sp.salaryCreditAmountPaise!,
+                                          currency: currency,
+                                          color: const Color(0xFF10B981),
+                                          icon: Icons.payments_rounded,
+                                          onTap: () => _creditSalary(
+                                            context,
+                                            account,
+                                            sp.salaryCreditAmountPaise!,
+                                            currency,
+                                          ),
+                                        ),
+                                      if (showExpenseBtn)
+                                        _QuickCreditButton(
+                                          label: 'Add Expense',
+                                          amount: sp.monthlyExpenseAmountPaise!,
+                                          currency: currency,
+                                          color: const Color(0xFF6366F1),
+                                          icon: Icons.account_balance_wallet_rounded,
+                                          onTap: () => _creditExpense(
+                                            context,
+                                            account,
+                                            sp.monthlyExpenseAmountPaise!,
+                                            currency,
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                );
+                              }),
                             ],
                           ),
                         ),
@@ -384,5 +434,160 @@ class AccountsScreen extends StatelessWidget {
         }
       }
     }
+  }
+
+  Future<void> _creditSalary(
+    BuildContext context,
+    Account account,
+    int amountPaise,
+    String currency,
+  ) async {
+    HapticFeedback.lightImpact();
+    final now = DateTime.now();
+    final income = Income(
+      amountMinorUnits: amountPaise,
+      accountId: account.id!,
+      sourceOrNote: 'Salary',
+      date: DateTime(now.year, now.month, now.day),
+      timeString: '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}',
+      createdAt: now,
+      updatedAt: now,
+    );
+    await context.read<AccountProvider>().addIncome(income);
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Salary ${CurrencyFormatter.formatPaise(amountPaise, symbol: currency)} credited to ${account.name}',
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: const Color(0xFF10B981),
+          duration: const Duration(seconds: 2),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      );
+    }
+  }
+
+  Future<void> _creditExpense(
+    BuildContext context,
+    Account account,
+    int amountPaise,
+    String currency,
+  ) async {
+    HapticFeedback.lightImpact();
+    final now = DateTime.now();
+    final income = Income(
+      amountMinorUnits: amountPaise,
+      accountId: account.id!,
+      sourceOrNote: 'Monthly Expense Budget',
+      date: DateTime(now.year, now.month, now.day),
+      timeString: '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}',
+      createdAt: now,
+      updatedAt: now,
+    );
+    await context.read<AccountProvider>().addIncome(income);
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  '${CurrencyFormatter.formatPaise(amountPaise, symbol: currency)} credited to ${account.name}',
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: const Color(0xFF6366F1),
+          duration: const Duration(seconds: 2),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      );
+    }
+  }
+}
+
+class _QuickCreditButton extends StatelessWidget {
+  final String label;
+  final int amount;
+  final String currency;
+  final Color color;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  const _QuickCreditButton({
+    required this.label,
+    required this.amount,
+    required this.currency,
+    required this.color,
+    required this.icon,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: color.withValues(alpha: 0.12),
+      borderRadius: BorderRadius.circular(10),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        splashColor: color.withValues(alpha: 0.25),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: color.withValues(alpha: 0.35), width: 1),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, color: color, size: 14),
+              const SizedBox(width: 5),
+              Text(
+                label,
+                style: TextStyle(
+                  color: color,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 12,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: color,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  CurrencyFormatter.formatPaise(amount, symbol: currency),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 10.5,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

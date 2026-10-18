@@ -17,6 +17,12 @@ class AppSettings {
   final bool isCelebrationEnabled;
   final String celebrationMode; // 'all_reviews' or 'positive_only'
 
+  // Quick Credit buttons
+  final int? salaryCreditAmountPaise;
+  final bool isSalaryCreditEnabled;
+  final int? monthlyExpenseAmountPaise;
+  final bool isMonthlyExpenseEnabled;
+
   const AppSettings({
     this.themeOption = AppThemeOption.dark,
     this.currencySymbol = '₹',
@@ -28,11 +34,19 @@ class AppSettings {
     this.lastCelebratedMonth,
     this.isCelebrationEnabled = true,
     this.celebrationMode = 'all_reviews',
+    this.salaryCreditAmountPaise,
+    this.isSalaryCreditEnabled = true,
+    this.monthlyExpenseAmountPaise,
+    this.isMonthlyExpenseEnabled = true,
   });
 
   double get overallMonthlyBudgetDouble => (overallMonthlyBudgetPaise ?? 0) / 100.0;
   bool get isOverallBudgetSet => overallMonthlyBudgetPaise != null && overallMonthlyBudgetPaise! > 0;
   bool get isPositiveOnlyCelebration => celebrationMode == 'positive_only';
+  double get salaryCreditAmountDouble => (salaryCreditAmountPaise ?? 0) / 100.0;
+  bool get isSalaryCreditAmountSet => salaryCreditAmountPaise != null && salaryCreditAmountPaise! > 0;
+  double get monthlyExpenseAmountDouble => (monthlyExpenseAmountPaise ?? 0) / 100.0;
+  bool get isMonthlyExpenseAmountSet => monthlyExpenseAmountPaise != null && monthlyExpenseAmountPaise! > 0;
 
   AppSettings copyWith({
     AppThemeOption? themeOption,
@@ -46,6 +60,12 @@ class AppSettings {
     String? lastCelebratedMonth,
     bool? isCelebrationEnabled,
     String? celebrationMode,
+    int? salaryCreditAmountPaise,
+    bool resetSalaryCreditAmount = false,
+    bool? isSalaryCreditEnabled,
+    int? monthlyExpenseAmountPaise,
+    bool resetMonthlyExpenseAmount = false,
+    bool? isMonthlyExpenseEnabled,
   }) {
     return AppSettings(
       themeOption: themeOption ?? this.themeOption,
@@ -60,6 +80,14 @@ class AppSettings {
       lastCelebratedMonth: lastCelebratedMonth ?? this.lastCelebratedMonth,
       isCelebrationEnabled: isCelebrationEnabled ?? this.isCelebrationEnabled,
       celebrationMode: celebrationMode ?? this.celebrationMode,
+      salaryCreditAmountPaise: resetSalaryCreditAmount
+          ? null
+          : (salaryCreditAmountPaise ?? this.salaryCreditAmountPaise),
+      isSalaryCreditEnabled: isSalaryCreditEnabled ?? this.isSalaryCreditEnabled,
+      monthlyExpenseAmountPaise: resetMonthlyExpenseAmount
+          ? null
+          : (monthlyExpenseAmountPaise ?? this.monthlyExpenseAmountPaise),
+      isMonthlyExpenseEnabled: isMonthlyExpenseEnabled ?? this.isMonthlyExpenseEnabled,
     );
   }
 
@@ -75,6 +103,10 @@ class AppSettings {
       'last_celebrated_month': lastCelebratedMonth ?? '',
       'celebration_enabled': isCelebrationEnabled ? 'true' : 'false',
       'celebration_mode': celebrationMode,
+      'salary_credit_amount': salaryCreditAmountPaise?.toString() ?? '',
+      'salary_credit_enabled': isSalaryCreditEnabled ? 'true' : 'false',
+      'monthly_expense_amount': monthlyExpenseAmountPaise?.toString() ?? '',
+      'monthly_expense_enabled': isMonthlyExpenseEnabled ? 'true' : 'false',
     };
   }
 
@@ -111,6 +143,16 @@ class AppSettings {
     final celebrationEnabled = map['celebration_enabled'] != 'false';
     final celebrationMode = map['celebration_mode'] ?? 'all_reviews';
 
+    final salaryCreditStr = map['salary_credit_amount'];
+    final salaryCreditPaise = (salaryCreditStr != null && salaryCreditStr.isNotEmpty)
+        ? int.tryParse(salaryCreditStr)
+        : null;
+
+    final monthlyExpenseStr = map['monthly_expense_amount'];
+    final monthlyExpensePaise = (monthlyExpenseStr != null && monthlyExpenseStr.isNotEmpty)
+        ? int.tryParse(monthlyExpenseStr)
+        : null;
+
     return AppSettings(
       themeOption: option,
       currencySymbol: map['currency_symbol'] ?? '₹',
@@ -122,6 +164,10 @@ class AppSettings {
       lastCelebratedMonth: (lastCelebrated != null && lastCelebrated.isNotEmpty) ? lastCelebrated : null,
       isCelebrationEnabled: celebrationEnabled,
       celebrationMode: celebrationMode,
+      salaryCreditAmountPaise: salaryCreditPaise,
+      isSalaryCreditEnabled: map['salary_credit_enabled'] != 'false',
+      monthlyExpenseAmountPaise: monthlyExpensePaise,
+      isMonthlyExpenseEnabled: map['monthly_expense_enabled'] != 'false',
     );
   }
 }
