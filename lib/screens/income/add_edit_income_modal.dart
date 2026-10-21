@@ -247,7 +247,7 @@ class _AddEditIncomeScreenState extends State<AddEditIncomeScreen> {
                 controller: _noteController,
                 decoration: const InputDecoration(
                   labelText: 'Income Source / Description',
-                  hintText: 'Salary, Freelance payout, Dividend...',
+                  hintText: 'Source or note (optional)',
                   prefixIcon: Icon(Icons.description_outlined),
                 ),
               ),

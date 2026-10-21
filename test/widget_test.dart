@@ -34,7 +34,7 @@ void main() {
             ChangeNotifierProvider(create: (_) => ExpenseProvider()),
             ChangeNotifierProvider(create: (_) => ReportsProvider()),
           ],
-          child: const ExpenseTrackerApp(),
+          child: ExpenseTrackerApp(theme: ThemeData.dark()),
         ),
       );
 

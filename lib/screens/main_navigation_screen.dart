@@ -13,6 +13,8 @@ import '../providers/reports_provider.dart';
 import 'accounts/accounts_screen.dart';
 import '../providers/settings_provider.dart';
 
+enum NavTab { dashboard, accounts, history, reports, settings }
+
 class MainNavigationScreen extends StatefulWidget {
   const MainNavigationScreen({super.key});
 
@@ -21,7 +23,7 @@ class MainNavigationScreen extends StatefulWidget {
 }
 
 class _MainNavigationScreenState extends State<MainNavigationScreen> {
-  int _currentIndex = 0;
+  NavTab _currentTab = NavTab.dashboard;
 
   @override
   void initState() {
@@ -39,13 +41,29 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     final settings = context.watch<SettingsProvider>();
     final isAccountsEnabled = settings.isAccountsSectionEnabled;
 
-    final historyIndex = isAccountsEnabled ? 2 : 1;
+    if (!isAccountsEnabled && _currentTab == NavTab.accounts) {
+      _currentTab = NavTab.dashboard;
+    }
+
+    final List<NavTab> availableTabs = [
+      NavTab.dashboard,
+      if (isAccountsEnabled) NavTab.accounts,
+      NavTab.history,
+      NavTab.reports,
+      NavTab.settings,
+    ];
+
+    int currentIndex = availableTabs.indexOf(_currentTab);
+    if (currentIndex == -1) {
+      currentIndex = 0;
+      _currentTab = NavTab.dashboard;
+    }
 
     final List<Widget> screens = [
       DashboardScreen(
         onViewAllHistory: () {
           setState(() {
-            _currentIndex = historyIndex;
+            _currentTab = NavTab.history;
           });
         },
       ),
@@ -54,10 +72,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       const ReportsScreen(),
       const SettingsScreen(),
     ];
-
-    if (_currentIndex >= screens.length) {
-      _currentIndex = screens.length - 1;
-    }
 
     final List<NavigationDestination> destinations = [
       const NavigationDestination(
@@ -90,10 +104,10 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
     return Scaffold(
       body: IndexedStack(
-        index: _currentIndex,
+        index: currentIndex,
         children: screens,
       ),
-      floatingActionButton: _currentIndex == 0
+      floatingActionButton: _currentTab == NavTab.dashboard
           ? FloatingActionButton.extended(
               onPressed: () => AddEditExpenseModal.show(context),
               icon: const Icon(Icons.add_rounded, size: 24),
@@ -106,10 +120,10 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           : null,
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       bottomNavigationBar: NavigationBar(
-        selectedIndex: _currentIndex,
+        selectedIndex: currentIndex,
         onDestinationSelected: (index) {
           setState(() {
-            _currentIndex = index;
+            _currentTab = availableTabs[index];
           });
         },
         destinations: destinations,

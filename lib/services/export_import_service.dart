@@ -5,6 +5,7 @@ import 'package:archive/archive.dart';
 import 'package:excel/excel.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart' hide Category;
+import 'package:open_filex/open_filex.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:xml/xml.dart';
 
@@ -17,10 +18,12 @@ import 'pdf_statement_builder.dart';
 
 class ExportImportService {
   /// Exports data to an Excel (.xlsx) file with optional year & month filtering.
+  /// If [isReport] is true, generates a summary report sheet alongside transaction details.
   static Future<String?> exportToExcel({
     String? customFolderPath,
     int? targetYear,
     int? targetMonth,
+    bool isReport = false,
   }) async {
     final db = DatabaseHelper.instance;
     var expenses = await db.getExpenses();
@@ -39,41 +42,125 @@ class ExportImportService {
     final accMap = {for (var a in accounts) a.id: a.name};
 
     final excel = Excel.createExcel();
-    final sheet = excel['Expenses'];
+    final defaultSheetName = excel.getDefaultSheet() ?? 'Sheet1';
 
-    // Header row
-    sheet.appendRow([
-      TextCellValue('Date'),
-      TextCellValue('Category'),
-      TextCellValue('Expense'),
-      TextCellValue('Amount'),
-      TextCellValue('Account'),
-    ]);
+    double grandTotal = 0;
+    final Map<String, double> catTotals = {};
+    final Map<String, double> accTotals = {};
 
     for (final exp in expenses) {
-      final dateStr = "${exp.date.year}-${exp.date.month.toString().padLeft(2, '0')}-${exp.date.day.toString().padLeft(2, '0')}";
       final catName = catMap[exp.categoryId] ?? 'Other';
       final accName = accMap[exp.accountId] ?? 'Default';
+      grandTotal += exp.amountDouble;
+      catTotals[catName] = (catTotals[catName] ?? 0) + exp.amountDouble;
+      accTotals[accName] = (accTotals[accName] ?? 0) + exp.amountDouble;
+    }
 
-      sheet.appendRow([
-        TextCellValue(dateStr),
-        TextCellValue(catName),
-        TextCellValue(exp.note ?? ''),
-        DoubleCellValue(exp.amountDouble),
-        TextCellValue(accName),
+    if (isReport) {
+      // Summary Report Sheet
+      final summarySheet = excel['Expense Report'];
+      final dateNow = DateTime.now().toIso8601String().split('T').first;
+      final String periodText;
+      if (targetYear != null && targetMonth != null) {
+        periodText = '${_getMonthAbbr(targetMonth).toUpperCase()} $targetYear';
+      } else if (targetYear != null) {
+        periodText = 'YEAR $targetYear';
+      } else {
+        periodText = 'ALL TIME';
+      }
+
+      summarySheet.appendRow([TextCellValue('FINANCIAL EXPENSE REPORT SUMMARY')]);
+      summarySheet.appendRow([TextCellValue('Period:'), TextCellValue(periodText)]);
+      summarySheet.appendRow([TextCellValue('Generated Date:'), TextCellValue(dateNow)]);
+      summarySheet.appendRow([TextCellValue('Total Transactions:'), IntCellValue(expenses.length)]);
+      summarySheet.appendRow([TextCellValue('Grand Total (Rs.):'), DoubleCellValue(grandTotal)]);
+      summarySheet.appendRow([TextCellValue('')]);
+
+      summarySheet.appendRow([TextCellValue('CATEGORY BREAKDOWN')]);
+      summarySheet.appendRow([TextCellValue('Category'), TextCellValue('Total Spent (Rs.)'), TextCellValue('Share (%)')]);
+      final sortedCats = catTotals.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+      for (final entry in sortedCats) {
+        final share = grandTotal > 0 ? (entry.value / grandTotal) * 100 : 0.0;
+        summarySheet.appendRow([
+          TextCellValue(entry.key),
+          DoubleCellValue(entry.value),
+          TextCellValue('${share.toStringAsFixed(1)}%'),
+        ]);
+      }
+      summarySheet.appendRow([TextCellValue('')]);
+
+      summarySheet.appendRow([TextCellValue('ACCOUNT BREAKDOWN')]);
+      summarySheet.appendRow([TextCellValue('Account'), TextCellValue('Total Spent (Rs.)'), TextCellValue('Share (%)')]);
+      final sortedAccs = accTotals.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+      for (final entry in sortedAccs) {
+        final share = grandTotal > 0 ? (entry.value / grandTotal) * 100 : 0.0;
+        summarySheet.appendRow([
+          TextCellValue(entry.key),
+          DoubleCellValue(entry.value),
+          TextCellValue('${share.toStringAsFixed(1)}%'),
+        ]);
+      }
+
+      // Detailed Transactions Sheet
+      final txSheet = excel['Detailed Transactions'];
+      txSheet.appendRow([
+        TextCellValue('Date'),
+        TextCellValue('Category'),
+        TextCellValue('Expense'),
+        TextCellValue('Amount'),
+        TextCellValue('Account'),
       ]);
+      for (final exp in expenses) {
+        final dateStr = "${exp.date.year}-${exp.date.month.toString().padLeft(2, '0')}-${exp.date.day.toString().padLeft(2, '0')}";
+        final catName = catMap[exp.categoryId] ?? 'Other';
+        final accName = accMap[exp.accountId] ?? 'Default';
+        txSheet.appendRow([
+          TextCellValue(dateStr),
+          TextCellValue(catName),
+          TextCellValue(exp.note ?? ''),
+          DoubleCellValue(exp.amountDouble),
+          TextCellValue(accName),
+        ]);
+      }
+      excel.delete(defaultSheetName);
+    } else {
+      // Expense List Sheet
+      final listSheet = excel['Expense List'];
+      listSheet.appendRow([
+        TextCellValue('Date'),
+        TextCellValue('Category'),
+        TextCellValue('Expense'),
+        TextCellValue('Amount'),
+        TextCellValue('Account'),
+      ]);
+
+      for (final exp in expenses) {
+        final dateStr = "${exp.date.year}-${exp.date.month.toString().padLeft(2, '0')}-${exp.date.day.toString().padLeft(2, '0')}";
+        final catName = catMap[exp.categoryId] ?? 'Other';
+        final accName = accMap[exp.accountId] ?? 'Default';
+
+        listSheet.appendRow([
+          TextCellValue(dateStr),
+          TextCellValue(catName),
+          TextCellValue(exp.note ?? ''),
+          DoubleCellValue(exp.amountDouble),
+          TextCellValue(accName),
+        ]);
+      }
+      excel.delete(defaultSheetName);
     }
 
     final bytes = excel.encode();
     if (bytes == null) return null;
 
+    final String prefix = isReport ? 'expense_report' : 'expenses';
     final String fileName;
     if (targetYear != null && targetMonth != null) {
-      fileName = 'exp_${_getMonthAbbr(targetMonth)}_$targetYear.xlsx';
+      fileName = '${prefix}_${_getMonthAbbr(targetMonth)}_$targetYear.xlsx';
     } else if (targetYear != null) {
-      fileName = 'exp_year_$targetYear.xlsx';
+      fileName = '${prefix}_year_$targetYear.xlsx';
     } else {
-      fileName = 'exp_all_time_${DateTime.now().year}.xlsx';
+      fileName = '${prefix}_all_time_${DateTime.now().year}.xlsx';
     }
 
     return await _saveAndPromptFile('xlsx', bytes, customFolderPath: customFolderPath, overrideFileName: fileName);
@@ -127,10 +214,13 @@ class ExportImportService {
   }
 
   /// Exports data to a valid PDF (.pdf) summary file.
+  /// If [isReport] is true, generates a summary Financial Report PDF.
+  /// If [isReport] is false, generates a detailed line-by-line Expense List PDF.
   static Future<String?> exportToPdf({
     String? customFolderPath,
     int? targetYear,
     int? targetMonth,
+    bool isReport = true,
   }) async {
     final db = DatabaseHelper.instance;
     var expenses = await db.getExpenses();
@@ -150,12 +240,16 @@ class ExportImportService {
 
     double grandTotal = 0;
     final List<PdfStatementRecord> records = [];
+    final Map<String, double> catTotals = {};
+    final Map<String, double> accTotals = {};
 
     for (final exp in expenses) {
       final dateStr = "${exp.date.year}-${exp.date.month.toString().padLeft(2, '0')}-${exp.date.day.toString().padLeft(2, '0')}";
       final catName = catMap[exp.categoryId] ?? 'Other';
       final accName = accMap[exp.accountId] ?? 'Default';
       grandTotal += exp.amountDouble;
+      catTotals[catName] = (catTotals[catName] ?? 0) + exp.amountDouble;
+      accTotals[accName] = (accTotals[accName] ?? 0) + exp.amountDouble;
 
       records.add(PdfStatementRecord(
         date: dateStr,
@@ -163,6 +257,7 @@ class ExportImportService {
         note: exp.note ?? '',
         amount: exp.amountDouble.toStringAsFixed(2),
         account: accName,
+        rawAmount: exp.amountDouble,
       ));
     }
 
@@ -176,20 +271,34 @@ class ExportImportService {
       subtitleText = 'ALL TIME';
     }
 
-    final pdfBytes = PdfStatementBuilder.buildExpensePdf(
-      records: records,
-      grandTotalStr: grandTotal.toStringAsFixed(2),
-      generatedDateStr: dateNow,
-      titleSubtitle: subtitleText,
-    );
+    final Uint8List pdfBytes;
+    if (isReport) {
+      pdfBytes = PdfStatementBuilder.buildExpenseReportPdf(
+        records: records,
+        grandTotalStr: grandTotal.toStringAsFixed(2),
+        generatedDateStr: dateNow,
+        titleSubtitle: subtitleText,
+        categoryTotals: catTotals,
+        accountTotals: accTotals,
+      );
+    } else {
+      pdfBytes = PdfStatementBuilder.buildExpensePdf(
+        records: records,
+        grandTotalStr: grandTotal.toStringAsFixed(2),
+        generatedDateStr: dateNow,
+        titleSubtitle: subtitleText,
+        bannerTitle: 'EXPENSE LIST STATEMENT',
+      );
+    }
 
+    final String prefix = isReport ? 'expense_report' : 'expenses';
     final String fileName;
     if (targetYear != null && targetMonth != null) {
-      fileName = 'exp_${_getMonthAbbr(targetMonth)}_$targetYear.pdf';
+      fileName = '${prefix}_${_getMonthAbbr(targetMonth)}_$targetYear.pdf';
     } else if (targetYear != null) {
-      fileName = 'exp_year_$targetYear.pdf';
+      fileName = '${prefix}_year_$targetYear.pdf';
     } else {
-      fileName = 'exp_all_time_${DateTime.now().year}.pdf';
+      fileName = '${prefix}_all_time_${DateTime.now().year}.pdf';
     }
 
     return await _saveAndPromptFile('pdf', pdfBytes, customFolderPath: customFolderPath, overrideFileName: fileName);
@@ -212,6 +321,70 @@ class ExportImportService {
     return 'mon';
   }
 
+  /// Resolves the destination directory for exported files into Download/expense-reports.
+  static Future<Directory> resolveExportDirectory([String? customFolderPath]) async {
+    final rawFolder = (customFolderPath != null && customFolderPath.trim().isNotEmpty)
+        ? customFolderPath.trim()
+        : 'Download/expense-reports';
+
+    // 1. If absolute path provided, use it directly
+    final isAbsolute = rawFolder.startsWith('/') ||
+        (rawFolder.length >= 2 && rawFolder[1] == ':') ||
+        rawFolder.startsWith(r'\\');
+
+    if (isAbsolute) {
+      final dir = Directory(rawFolder);
+      if (!await dir.exists()) {
+        await dir.create(recursive: true);
+      }
+      return dir;
+    }
+
+    // 2. Relative path handling: strip redundant leading 'download/' or 'downloads/'
+    String subPath = rawFolder;
+    final lower = rawFolder.toLowerCase().replaceAll(r'\', '/');
+    if (lower.startsWith('download/')) {
+      subPath = rawFolder.substring(9);
+    } else if (lower.startsWith('downloads/')) {
+      subPath = rawFolder.substring(10);
+    } else if (lower == 'download' || lower == 'downloads') {
+      subPath = '';
+    }
+
+    // 3. Resolve base public Downloads folder
+    Directory? baseDir;
+    if (Platform.isAndroid) {
+      final androidPublicDownloads = Directory('/storage/emulated/0/Download');
+      if (await androidPublicDownloads.exists()) {
+        baseDir = androidPublicDownloads;
+      }
+    }
+
+    if (baseDir == null) {
+      try {
+        baseDir = await getDownloadsDirectory();
+      } catch (_) {}
+    }
+
+    if (baseDir == null) {
+      try {
+        baseDir = await getApplicationDocumentsDirectory();
+      } catch (_) {}
+    }
+
+    baseDir ??= Directory.systemTemp;
+
+    final targetPath = (subPath.isEmpty || subPath.trim().isEmpty)
+        ? baseDir.path
+        : '${baseDir.path}/$subPath'.replaceAll(r'\', '/');
+
+    final dir = Directory(targetPath);
+    if (!await dir.exists()) {
+      await dir.create(recursive: true);
+    }
+    return dir;
+  }
+
   static Future<String?> _saveAndPromptFile(
     String extension,
     List<int> bytes, {
@@ -220,69 +393,44 @@ class ExportImportService {
   }) async {
     if (kIsWeb) return null;
 
-    final targetFolder = (customFolderPath != null && customFolderPath.trim().isNotEmpty)
-        ? customFolderPath.trim()
-        : 'et_app_export';
-
     final now = DateTime.now();
     final monthAbbr = _getMonthAbbr(now.month);
-    final fileName = overrideFileName ?? 'exp_${monthAbbr}_${now.year}.$extension';
+    final fileName = overrideFileName ?? 'expenses_${monthAbbr}_${now.year}.$extension';
 
     String? savedPath;
 
-    // Try saving to configured export directory
+    // Save strictly to the single configured directory (Download/expense-reports)
     try {
-      Directory exportDir;
-      final isAbsolutePath = targetFolder.startsWith('/') || targetFolder.contains(':\\') || targetFolder.contains(':/');
-
-      if (isAbsolutePath) {
-        exportDir = Directory(targetFolder);
-      } else {
-        final docsDir = await getApplicationDocumentsDirectory();
-        exportDir = Directory('${docsDir.path}/$targetFolder');
-      }
-
-      if (!await exportDir.exists()) {
-        await exportDir.create(recursive: true);
-      }
-
-      final outputPath = '${exportDir.path}/$fileName';
+      final exportDir = await resolveExportDirectory(customFolderPath);
+      final outputPath = '${exportDir.path}/$fileName'.replaceAll(r'\', '/');
       final file = File(outputPath);
-      await file.writeAsBytes(bytes);
+      await file.writeAsBytes(bytes, flush: true);
       savedPath = outputPath;
     } catch (e) {
-      debugPrint('Export directory restricted ($e). Falling back to application documents directory.');
+      debugPrint('Export directory write failed ($e). Falling back to application documents directory.');
       try {
         final docsDir = await getApplicationDocumentsDirectory();
-        final fallbackDir = Directory('${docsDir.path}/et_app_export');
+        final fallbackDir = Directory('${docsDir.path}/expense-reports');
         if (!await fallbackDir.exists()) {
           await fallbackDir.create(recursive: true);
         }
-        final outputPath = '${fallbackDir.path}/$fileName';
+        final outputPath = '${fallbackDir.path}/$fileName'.replaceAll(r'\', '/');
         final file = File(outputPath);
-        await file.writeAsBytes(bytes);
+        await file.writeAsBytes(bytes, flush: true);
         savedPath = outputPath;
       } catch (fallbackErr) {
         debugPrint('Fallback export error: $fallbackErr');
       }
     }
 
-    // Prompt native save file picker dialog
-    try {
-      final selectedSavePath = await FilePicker.saveFile(
-        dialogTitle: 'Save Exported File',
-        fileName: fileName,
-        bytes: Uint8List.fromList(bytes),
-        type: FileType.custom,
-        allowedExtensions: [extension],
-      );
-      if (selectedSavePath != null) {
-        final pathStr = selectedSavePath.toString();
-        if (pathStr.isNotEmpty) {
-          savedPath = pathStr;
-        }
+    // Auto-open the exported data immediately upon export
+    if (savedPath != null) {
+      try {
+        await OpenFilex.open(savedPath);
+      } catch (openErr) {
+        debugPrint('Auto-opening exported file error: $openErr');
       }
-    } catch (_) {}
+    }
 
     return savedPath;
   }
@@ -292,10 +440,8 @@ class ExportImportService {
     String? initialDir = initialFolderPath;
     if (initialDir == null || initialDir.trim().isEmpty) {
       try {
-        final downloadsDir = await getDownloadsDirectory();
-        if (downloadsDir != null && await downloadsDir.exists()) {
-          initialDir = downloadsDir.path;
-        }
+        final dir = await resolveExportDirectory(initialFolderPath);
+        initialDir = dir.path;
       } catch (_) {}
     }
 

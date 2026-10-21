@@ -50,6 +50,7 @@ class _ExpenseHistoryScreenState extends State<ExpenseHistoryScreen> {
 
   Future<void> _loadBalancesForCurrentSelection() async {
     if (!mounted) return;
+    if (!context.read<SettingsProvider>().isAccountsSectionEnabled) return;
     final selMonth = context.read<ExpenseProvider>().selectedMonth;
     final now = DateTime.now();
     final isCurrentMonth = selMonth.year == now.year && selMonth.month == now.month;
@@ -228,7 +229,7 @@ class _ExpenseHistoryScreenState extends State<ExpenseHistoryScreen> {
     final isCurrentMonth = selMonth.year == now.year && selMonth.month == now.month;
 
     // Trigger balance reload whenever month changes
-    if (_balanceLoadedYear != selMonth.year || _balanceLoadedMonth != selMonth.month) {
+    if (settings.isAccountsSectionEnabled && (_balanceLoadedYear != selMonth.year || _balanceLoadedMonth != selMonth.month)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _loadBalancesForCurrentSelection();
       });
@@ -432,7 +433,7 @@ class _ExpenseHistoryScreenState extends State<ExpenseHistoryScreen> {
           ),
 
           // Balance Strip: show month-end closing balance (past) or live balance (current)
-          if (displayAccounts.isNotEmpty)
+          if (settings.isAccountsSectionEnabled && displayAccounts.isNotEmpty)
             Container(
               padding: const EdgeInsets.fromLTRB(16, 6, 16, 4),
               child: Row(

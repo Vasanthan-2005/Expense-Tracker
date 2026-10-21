@@ -171,7 +171,7 @@ class _CategoryFormDialogState extends State<CategoryFormDialog> {
               autofocus: true,
               decoration: const InputDecoration(
                 labelText: 'Category Name',
-                hintText: 'e.g. Subscriptions, Gaming...',
+                hintText: 'Category name',
               ),
             ),
             const SizedBox(height: 12),
@@ -181,7 +181,7 @@ class _CategoryFormDialogState extends State<CategoryFormDialog> {
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
               decoration: const InputDecoration(
                 labelText: 'Monthly Budget (Optional)',
-                hintText: 'e.g. 5000 (Default: ₹0 limit)',
+                hintText: '0 (Default: No limit)',
                 prefixText: '₹ ',
               ),
             ),

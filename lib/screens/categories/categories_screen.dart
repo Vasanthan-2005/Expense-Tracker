@@ -45,7 +45,7 @@ class CategoriesScreen extends StatelessWidget {
               decoration: InputDecoration(
                 labelText: 'Monthly Overall Budget',
                 prefixText: '$currency ',
-                hintText: 'e.g. 50000',
+                hintText: 'Enter overall budget',
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
               ),
             ),

@@ -132,7 +132,8 @@ class SettingsProvider with ChangeNotifier {
   }
 
   Future<void> setExportFolderPath(String path) async {
-    final cleanPath = path.trim().isEmpty ? 'et_app_export' : path.trim();
+    final trimmed = path.trim();
+    final cleanPath = (trimmed.isEmpty || trimmed == 'et_app_export') ? 'Download/expense-reports' : trimmed;
     _settings = _settings.copyWith(exportFolderPath: cleanPath);
     notifyListeners();
     await DatabaseHelper.instance.updateSetting('export_folder_path', cleanPath);

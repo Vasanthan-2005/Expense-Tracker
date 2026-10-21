@@ -293,7 +293,7 @@ class _TransferMoneyScreenState extends State<TransferMoneyScreen> {
                 controller: _noteController,
                 decoration: const InputDecoration(
                   labelText: 'Note / Reason (Optional)',
-                  hintText: 'Monthly budget allocation, savings move...',
+                  hintText: 'Transfer note (optional)',
                   prefixIcon: Icon(Icons.notes),
                 ),
               ),

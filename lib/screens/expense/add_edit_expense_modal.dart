@@ -422,7 +422,7 @@ class _AddEditExpenseModalState extends State<AddEditExpenseModal> {
               controller: _noteController,
               decoration: const InputDecoration(
                 labelText: 'Description',
-                hintText: 'Dinner with friends, groceries...',
+                hintText: 'Expense note (optional)',
                 prefixIcon: Icon(Icons.notes),
               ),
             ),

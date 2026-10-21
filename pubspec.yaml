@@ -45,6 +45,7 @@ dependencies:
   archive: ^3.6.1
   xml: ^6.5.0
   google_fonts: ^6.2.1
+  open_filex: ^5.0.0
 
 dev_dependencies:
   flutter_test:

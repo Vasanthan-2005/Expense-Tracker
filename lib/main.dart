@@ -27,7 +27,8 @@ void main() async {
 }
 
 class ExpenseTrackerApp extends StatelessWidget {
-  const ExpenseTrackerApp({super.key});
+  final ThemeData? theme;
+  const ExpenseTrackerApp({super.key, this.theme});
 
   @override
   Widget build(BuildContext context) {
@@ -36,7 +37,7 @@ class ExpenseTrackerApp extends StatelessWidget {
     return MaterialApp(
       title: 'Expense Tracker',
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.getTheme(settingsProvider.themeOption),
+      theme: theme ?? AppTheme.getTheme(settingsProvider.themeOption),
       home: const MainNavigationScreen(),
     );
   }

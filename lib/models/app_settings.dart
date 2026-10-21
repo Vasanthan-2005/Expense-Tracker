@@ -29,7 +29,7 @@ class AppSettings {
     this.isFloatingBubbleEnabled = false,
     this.isAccountsSectionEnabled = true,
     this.lastCategoryId,
-    this.exportFolderPath = 'et_app_export',
+    this.exportFolderPath = 'Download/expense-reports',
     this.overallMonthlyBudgetPaise,
     this.lastCelebratedMonth,
     this.isCelebrationEnabled = true,
@@ -153,13 +153,18 @@ class AppSettings {
         ? int.tryParse(monthlyExpenseStr)
         : null;
 
+    final rawExportPath = map['export_folder_path'];
+    final exportPath = (rawExportPath == null || rawExportPath.isEmpty || rawExportPath == 'et_app_export')
+        ? 'Download/expense-reports'
+        : rawExportPath;
+
     return AppSettings(
       themeOption: option,
       currencySymbol: map['currency_symbol'] ?? '₹',
       isFloatingBubbleEnabled: map['floating_bubble_enabled'] == 'true',
       isAccountsSectionEnabled: accountsEnabled,
       lastCategoryId: categoryId,
-      exportFolderPath: map['export_folder_path'] ?? 'et_app_export',
+      exportFolderPath: exportPath,
       overallMonthlyBudgetPaise: overallBudgetPaise,
       lastCelebratedMonth: (lastCelebrated != null && lastCelebrated.isNotEmpty) ? lastCelebrated : null,
       isCelebrationEnabled: celebrationEnabled,

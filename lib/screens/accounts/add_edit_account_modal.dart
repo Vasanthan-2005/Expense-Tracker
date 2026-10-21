@@ -227,7 +227,7 @@ class _AddEditAccountModalState extends State<AddEditAccountModal> {
               controller: _nameController,
               decoration: const InputDecoration(
                 labelText: 'Account Name',
-                hintText: 'Salary Account, Emergency Savings...',
+                hintText: 'Account name',
                 prefixIcon: Icon(Icons.account_balance_outlined),
               ),
             ),

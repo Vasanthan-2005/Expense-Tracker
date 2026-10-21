@@ -13,6 +13,7 @@ import '../../models/account.dart';
 import '../categories/categories_screen.dart';
 import '../../providers/account_provider.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:open_filex/open_filex.dart';
 import 'category_order_screen.dart';
 import '../../core/utils/currency_formatter.dart';
 import '../celebration/celebrations_screen.dart';
@@ -65,16 +66,17 @@ class _SettingsScreenState extends State<SettingsScreen>
     final folderPath = context.read<SettingsProvider>().exportFolderPath;
 
     final availableYearsMap = await DatabaseHelper.instance.getAvailableExportYearsAndMonths();
+    final availableYears = availableYearsMap.keys.toList()..sort((a, b) => b.compareTo(a));
 
     if (!mounted) return;
-
-    int? selectedYear;
-    int? selectedMonth;
 
     const monthNames = [
       'January', 'February', 'March', 'April', 'May', 'June',
       'July', 'August', 'September', 'October', 'November', 'December'
     ];
+
+    int? selectedYear = availableYears.isNotEmpty ? availableYears.first : null;
+    int? selectedMonth;
 
     final result = await showModalBottomSheet<Map<String, dynamic>>(
       context: context,
@@ -84,10 +86,16 @@ class _SettingsScreenState extends State<SettingsScreen>
       ),
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setModalState) {
-          final availableYears = availableYearsMap.keys.toList();
-          final availableMonthsForYear = (selectedYear != null && availableYearsMap.containsKey(selectedYear))
-              ? availableYearsMap[selectedYear]!
+          final availableMonthsForYear = selectedYear != null
+              ? (availableYearsMap[selectedYear] ?? <int>[])
               : <int>[];
+
+          String periodSummary = 'All Records (All Time)';
+          if (selectedYear != null && selectedMonth != null) {
+            periodSummary = '${monthNames[selectedMonth! - 1]} $selectedYear';
+          } else if (selectedYear != null) {
+            periodSummary = 'Full Year $selectedYear';
+          }
 
           return Container(
             padding: const EdgeInsets.all(24),
@@ -95,22 +103,31 @@ class _SettingsScreenState extends State<SettingsScreen>
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Export Financial Data',
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Export Financial Data',
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close_rounded, size: 20),
+                      onPressed: () => Navigator.pop(ctx),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Select Year & Month filter (or All)',
+                  'Filter by available year & month, then choose export type and format.',
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.7),
                   ),
                 ),
                 const SizedBox(height: 16),
 
-                // Dual Dropdowns Row (Year & Month)
+                // Year & Month Dropdowns
                 Row(
                   children: [
                     // Year Dropdown
@@ -159,7 +176,9 @@ class _SettingsScreenState extends State<SettingsScreen>
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
                         decoration: BoxDecoration(
-                          color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                          color: selectedYear == null
+                              ? theme.disabledColor.withValues(alpha: 0.1)
+                              : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(color: theme.dividerColor.withValues(alpha: 0.3)),
                         ),
@@ -182,82 +201,189 @@ class _SettingsScreenState extends State<SettingsScreen>
                                 ...availableMonthsForYear.map((m) => DropdownMenuItem<int?>(
                                       value: m,
                                       child: Text(monthNames[m - 1]),
-                                    ))
-                              else
-                                ...List.generate(12, (index) => index + 1).map((m) => DropdownMenuItem<int?>(
-                                      value: m,
-                                      child: Text(monthNames[m - 1]),
                                     )),
                             ],
-                            onChanged: (val) {
-                              setModalState(() {
-                                selectedMonth = val;
-                              });
-                            },
+                            onChanged: selectedYear == null
+                                ? null
+                                : (val) {
+                                    setModalState(() {
+                                      selectedMonth = val;
+                                    });
+                                  },
                           ),
                         ),
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 18),
 
-                Text(
-                  'Choose Export Format',
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
+                // Active filter indicator badge
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.primary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.filter_alt_outlined, size: 14, color: theme.colorScheme.primary),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Target Period: $periodSummary',
+                        style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: theme.colorScheme.primary),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 16),
 
-                ListTile(
-                  leading: const Icon(Icons.table_chart, color: Color(0xFF10B981)),
-                  title: const Text('Excel Spreadsheet (.xlsx)'),
-                  subtitle: Text(
-                    selectedYear != null
-                        ? 'Formatted workbook for ${selectedMonth != null ? "${monthNames[selectedMonth! - 1]} " : ""}$selectedYear'
-                        : 'Formatted workbook for all time records',
+                // Option 1: Expense List
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: theme.dividerColor.withValues(alpha: 0.25)),
                   ),
-                  trailing: const Icon(Icons.arrow_forward_ios, size: 14),
-                  onTap: () => Navigator.pop(ctx, {
-                    'format': 'excel',
-                    'year': selectedYear,
-                    'month': selectedMonth,
-                  }),
-                ),
-                ListTile(
-                  leading: const Icon(Icons.picture_as_pdf, color: Color(0xFFEF4444)),
-                  title: const Text('PDF Document (.pdf)'),
-                  subtitle: Text(
-                    selectedYear != null
-                        ? 'Clean summary for ${selectedMonth != null ? "${monthNames[selectedMonth! - 1]} " : ""}$selectedYear'
-                        : 'Clean summary report for all records',
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Row(
+                        children: [
+                          Icon(Icons.format_list_bulleted_rounded, size: 18, color: Color(0xFF6366F1)),
+                          SizedBox(width: 8),
+                          Text(
+                            'Expense List',
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14.5),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Complete line-by-line itemized transactions (Date, Category, Note, Amount, Account)',
+                        style: TextStyle(fontSize: 11.5, color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.7)),
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: FilledButton.tonalIcon(
+                              style: FilledButton.styleFrom(
+                                backgroundColor: const Color(0xFF10B981).withValues(alpha: 0.15),
+                                foregroundColor: const Color(0xFF059669),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                padding: const EdgeInsets.symmetric(vertical: 9),
+                              ),
+                              icon: const Icon(Icons.table_chart_rounded, size: 18),
+                              label: const Text('Excel (.xlsx)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5)),
+                              onPressed: () => Navigator.pop(ctx, {
+                                'type': 'expense_list',
+                                'format': 'excel',
+                                'year': selectedYear,
+                                'month': selectedMonth,
+                              }),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: FilledButton.tonalIcon(
+                              style: FilledButton.styleFrom(
+                                backgroundColor: const Color(0xFFEF4444).withValues(alpha: 0.15),
+                                foregroundColor: const Color(0xFFDC2626),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                padding: const EdgeInsets.symmetric(vertical: 9),
+                              ),
+                              icon: const Icon(Icons.picture_as_pdf_rounded, size: 18),
+                              label: const Text('PDF (.pdf)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5)),
+                              onPressed: () => Navigator.pop(ctx, {
+                                'type': 'expense_list',
+                                'format': 'pdf',
+                                'year': selectedYear,
+                                'month': selectedMonth,
+                              }),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
-                  trailing: const Icon(Icons.arrow_forward_ios, size: 14),
-                  onTap: () => Navigator.pop(ctx, {
-                    'format': 'pdf',
-                    'year': selectedYear,
-                    'month': selectedMonth,
-                  }),
                 ),
-                ListTile(
-                  leading: const Icon(Icons.receipt_long, color: Color(0xFF3B82F6)),
-                  title: const Text('CSV Format (.csv)'),
-                  subtitle: const Text('Plain comma-separated data table'),
-                  trailing: const Icon(Icons.arrow_forward_ios, size: 14),
-                  onTap: () => Navigator.pop(ctx, {
-                    'format': 'csv',
-                    'year': selectedYear,
-                    'month': selectedMonth,
-                  }),
+                const SizedBox(height: 12),
+
+                // Option 2: Expense Report
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: theme.dividerColor.withValues(alpha: 0.25)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Row(
+                        children: [
+                          Icon(Icons.analytics_rounded, size: 18, color: Color(0xFF3B82F6)),
+                          SizedBox(width: 8),
+                          Text(
+                            'Expense Report',
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14.5),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Financial summary statement with category breakdown, account totals & percentages',
+                        style: TextStyle(fontSize: 11.5, color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.7)),
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: FilledButton.tonalIcon(
+                              style: FilledButton.styleFrom(
+                                backgroundColor: const Color(0xFF10B981).withValues(alpha: 0.15),
+                                foregroundColor: const Color(0xFF059669),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                padding: const EdgeInsets.symmetric(vertical: 9),
+                              ),
+                              icon: const Icon(Icons.table_chart_rounded, size: 18),
+                              label: const Text('Excel (.xlsx)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5)),
+                              onPressed: () => Navigator.pop(ctx, {
+                                'type': 'expense_report',
+                                'format': 'excel',
+                                'year': selectedYear,
+                                'month': selectedMonth,
+                              }),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: FilledButton.tonalIcon(
+                              style: FilledButton.styleFrom(
+                                backgroundColor: const Color(0xFFEF4444).withValues(alpha: 0.15),
+                                foregroundColor: const Color(0xFFDC2626),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                padding: const EdgeInsets.symmetric(vertical: 9),
+                              ),
+                              icon: const Icon(Icons.picture_as_pdf_rounded, size: 18),
+                              label: const Text('PDF (.pdf)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5)),
+                              onPressed: () => Navigator.pop(ctx, {
+                                'type': 'expense_report',
+                                'format': 'pdf',
+                                'year': selectedYear,
+                                'month': selectedMonth,
+                              }),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
-                ListTile(
-                  leading: const Icon(Icons.backup_table, color: Color(0xFF8B5CF6)),
-                  title: const Text('Full JSON Backup (.json)'),
-                  subtitle: const Text('All categories and expenses database snapshot'),
-                  trailing: const Icon(Icons.arrow_forward_ios, size: 14),
-                  onTap: () => Navigator.pop(ctx, {'format': 'json'}),
-                ),
+                const SizedBox(height: 8),
               ],
             ),
           );
@@ -267,9 +393,11 @@ class _SettingsScreenState extends State<SettingsScreen>
 
     if (result == null) return;
 
+    final type = result['type'] as String;
     final format = result['format'] as String;
     final targetYear = result['year'] as int?;
     final targetMonth = result['month'] as int?;
+    final isReport = type == 'expense_report';
 
     setState(() => _isExporting = true);
     try {
@@ -279,40 +407,70 @@ class _SettingsScreenState extends State<SettingsScreen>
           customFolderPath: folderPath,
           targetYear: targetYear,
           targetMonth: targetMonth,
+          isReport: isReport,
         );
       } else if (format == 'pdf') {
         path = await ExportImportService.exportToPdf(
           customFolderPath: folderPath,
           targetYear: targetYear,
           targetMonth: targetMonth,
+          isReport: isReport,
         );
-      } else if (format == 'csv') {
-        path = await ExportImportService.exportToCsv(
-          customFolderPath: folderPath,
-          targetYear: targetYear,
-          targetMonth: targetMonth,
-        );
-      } else if (format == 'json') {
-        path = await ExportImportService.exportBackup(customFolderPath: folderPath);
       }
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              path != null
-                  ? 'File exported successfully to: $path'
-                  : 'Export completed',
+        ScaffoldMessenger.of(context).clearSnackBars();
+        if (path != null) {
+          final savedPath = path;
+          // Open the exported file immediately
+          try {
+            await OpenFilex.open(savedPath);
+          } catch (_) {}
+
+          final fileName = savedPath.split(RegExp(r'[/\\]')).last;
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Exported & opened: $fileName',
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ],
+              ),
+              action: SnackBarAction(
+                label: 'Open Again',
+                textColor: Colors.amberAccent,
+                onPressed: () => OpenFilex.open(savedPath),
+              ),
+              duration: const Duration(seconds: 4),
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
-            duration: const Duration(seconds: 4),
-          ),
-        );
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Export completed.'),
+              duration: Duration(seconds: 4),
+            ),
+          );
+        }
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Export failed: $e')));
+        ScaffoldMessenger.of(context).clearSnackBars();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Export failed: $e'),
+            duration: const Duration(seconds: 4),
+          ),
+        );
       }
     } finally {
       if (mounted) setState(() => _isExporting = false);
@@ -412,19 +570,19 @@ class _SettingsScreenState extends State<SettingsScreen>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'Set the folder name or full directory path where exported files (Excel, PDF, CSV, JSON) will be saved.',
+              'Files are saved inside device Downloads by default. You can edit the folder name or enter an absolute path.',
               style: TextStyle(fontSize: 13, height: 1.4),
             ),
             const SizedBox(height: 16),
             TextField(
               controller: controller,
               decoration: InputDecoration(
-                labelText: 'Export Folder Path',
-                hintText: 'et_app_export',
+                labelText: 'Export Storage Path',
+                hintText: 'Download/expense-reports',
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 suffixIcon: IconButton(
                   icon: const Icon(Icons.folder_outlined),
-                  tooltip: 'Browse Directory',
+                  tooltip: 'Browse Folder',
                   onPressed: () async {
                     try {
                       final selectedDir = await FilePicker.getDirectoryPath();
@@ -436,6 +594,14 @@ class _SettingsScreenState extends State<SettingsScreen>
                 ),
               ),
             ),
+            const SizedBox(height: 12),
+            ActionChip(
+              avatar: const Icon(Icons.restore, size: 16),
+              label: const Text('Reset Default (Download/expense-reports)', style: TextStyle(fontSize: 12)),
+              onPressed: () {
+                controller.text = 'Download/expense-reports';
+              },
+            ),
           ],
         ),
         actions: [
@@ -446,8 +612,19 @@ class _SettingsScreenState extends State<SettingsScreen>
           FilledButton(
             onPressed: () async {
               final newPath = controller.text.trim();
-              await settingsProvider.setExportFolderPath(newPath.isEmpty ? 'et_app_export' : newPath);
-              if (ctx.mounted) Navigator.pop(ctx);
+              final effectivePath = newPath.isEmpty ? 'Download/expense-reports' : newPath;
+              await settingsProvider.setExportFolderPath(effectivePath);
+              if (ctx.mounted) {
+                Navigator.pop(ctx);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Export storage folder set to: $effectivePath'),
+                    duration: const Duration(seconds: 3),
+                    behavior: SnackBarBehavior.floating,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                );
+              }
             },
             child: const Text('Save Path'),
           ),
@@ -491,7 +668,7 @@ class _SettingsScreenState extends State<SettingsScreen>
               decoration: InputDecoration(
                 labelText: 'Monthly Overall Budget',
                 prefixText: '$currency ',
-                hintText: 'e.g. 50000',
+                hintText: 'Enter overall budget',
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
               ),
             ),
@@ -565,7 +742,7 @@ class _SettingsScreenState extends State<SettingsScreen>
               decoration: InputDecoration(
                 labelText: 'Salary Amount',
                 prefixText: '$currency ',
-                hintText: 'e.g. 50000',
+                hintText: 'Enter salary amount',
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
               ),
             ),
@@ -627,7 +804,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'Set a fixed amount to transfer from your Salary Account to your Expense Account each month (e.g. your monthly expense budget).',
+              'Set a fixed amount to transfer from your Salary Account to your Expense Account each month for your monthly expense budget.',
               style: TextStyle(fontSize: 13, height: 1.4),
             ),
             const SizedBox(height: 16),
@@ -638,7 +815,7 @@ class _SettingsScreenState extends State<SettingsScreen>
               decoration: InputDecoration(
                 labelText: 'Expense Amount',
                 prefixText: '$currency ',
-                hintText: 'e.g. 20000',
+                hintText: 'Enter expense amount',
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
               ),
             ),
@@ -899,26 +1076,66 @@ class _SettingsScreenState extends State<SettingsScreen>
             const _SectionHeader(title: 'Budgets & Goals', icon: Icons.savings_outlined),
             _ModernCard(
               children: [
-                _ModernTile(
-                  icon: Icons.track_changes_rounded,
-                  iconColor: const Color(0xFF10B981),
-                  title: 'Monthly Spending Budget',
-                  subtitle: settingsProvider.isOverallBudgetSet
-                      ? 'Global limit: ${CurrencyFormatter.formatPaise(settingsProvider.overallMonthlyBudgetPaise!, symbol: settingsProvider.currencySymbol)} / month'
-                      : 'Set a global spending limit to track targets',
-                  trailing: settingsProvider.isOverallBudgetSet
-                      ? Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF10B981).withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(8),
+                ListTile(
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.track_changes_rounded, color: Color(0xFF10B981), size: 20),
+                  ),
+                  title: const Text('Monthly Spending Budget', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                  subtitle: Text(
+                    settingsProvider.isOverallBudgetSet
+                        ? 'Global limit: ${CurrencyFormatter.formatPaise(settingsProvider.overallMonthlyBudgetPaise!, symbol: settingsProvider.currencySymbol)} / month'
+                        : 'Set a global spending limit to track targets',
+                    style: const TextStyle(fontSize: 11.5),
+                  ),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (settingsProvider.isOverallBudgetSet)
+                        InkWell(
+                          onTap: () => _showOverallBudgetDialog(context),
+                          borderRadius: BorderRadius.circular(8),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            margin: const EdgeInsets.only(right: 6),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.4)),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  CurrencyFormatter.formatPaise(settingsProvider.overallMonthlyBudgetPaise!, symbol: settingsProvider.currencySymbol),
+                                  style: const TextStyle(
+                                    color: Color(0xFF10B981),
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                                const SizedBox(width: 4),
+                                const Icon(Icons.edit, size: 12, color: Color(0xFF10B981)),
+                              ],
+                            ),
                           ),
-                          child: Text(
-                            CurrencyFormatter.formatPaise(settingsProvider.overallMonthlyBudgetPaise!, symbol: settingsProvider.currencySymbol),
-                            style: const TextStyle(color: Color(0xFF10B981), fontSize: 11, fontWeight: FontWeight.bold),
-                          ),
-                        )
-                      : const Icon(Icons.chevron_right, size: 18, color: Colors.grey),
+                        ),
+                      Switch(
+                        value: settingsProvider.isOverallBudgetSet,
+                        onChanged: (val) {
+                          if (val) {
+                            _showOverallBudgetDialog(context);
+                          } else {
+                            settingsProvider.setOverallMonthlyBudget(null);
+                          }
+                        },
+                      ),
+                    ],
+                  ),
                   onTap: () => _showOverallBudgetDialog(context),
                 ),
                 const Divider(height: 1),
@@ -957,160 +1174,166 @@ class _SettingsScreenState extends State<SettingsScreen>
             const SizedBox(height: 18),
 
             // 3. ACCOUNTS & QUICK CREDITS
-            const _SectionHeader(title: 'Accounts & Quick Credits', icon: Icons.account_balance_wallet_outlined),
             Consumer<SettingsProvider>(
-              builder: (ctx, sp, _) => _ModernCard(
-                children: [
-                  SwitchListTile(
-                    secondary: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF06B6D4).withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: const Icon(Icons.account_balance_wallet_outlined, color: Color(0xFF06B6D4), size: 20),
+              builder: (ctx, sp, _) {
+                final isAccountsEnabled = sp.isAccountsSectionEnabled;
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _SectionHeader(
+                      title: isAccountsEnabled ? 'Accounts & Quick Credits' : 'Accounts',
+                      icon: Icons.account_balance_wallet_outlined,
                     ),
-                    title: const Text('Accounts Feature', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                    subtitle: const Text('Enable or disable accounts tab & live balances', style: TextStyle(fontSize: 11.5)),
-                    value: sp.isAccountsSectionEnabled,
-                    onChanged: (enabled) => sp.setAccountsSectionEnabled(enabled),
-                  ),
-                  const Divider(height: 1),
-                  ListTile(
-                    leading: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF10B981).withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: const Icon(Icons.payments_rounded, color: Color(0xFF10B981), size: 20),
-                    ),
-                    title: const Text('Salary Credited Button', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                    subtitle: Text(
-                      sp.isSalaryCreditEnabled
-                          ? (sp.isSalaryCreditAmountSet
-                              ? 'Amount: ${CurrencyFormatter.formatPaise(sp.salaryCreditAmountPaise!, symbol: sp.currencySymbol)} (tap to edit)'
-                              : 'Tap to set monthly salary amount')
-                          : 'Quick 1-tap credit button on Salary Account',
-                      style: const TextStyle(fontSize: 11.5),
-                    ),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
+                    _ModernCard(
                       children: [
-                        if (sp.isSalaryCreditEnabled && sp.isSalaryCreditAmountSet)
-                          InkWell(
-                            onTap: () => _showSalaryCreditAmountDialog(context),
-                            borderRadius: BorderRadius.circular(8),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                              margin: const EdgeInsets.only(right: 6),
+                        SwitchListTile(
+                          secondary: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF06B6D4).withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Icon(Icons.account_balance_wallet_outlined, color: Color(0xFF06B6D4), size: 20),
+                          ),
+                          title: const Text('Accounts Feature', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                          subtitle: const Text('Enable or disable accounts tab & live balances', style: TextStyle(fontSize: 11.5)),
+                          value: isAccountsEnabled,
+                          onChanged: (enabled) => sp.setAccountsSectionEnabled(enabled),
+                        ),
+                        if (isAccountsEnabled) ...[
+                          const Divider(height: 1),
+                          ListTile(
+                            leading: Container(
+                              padding: const EdgeInsets.all(8),
                               decoration: BoxDecoration(
                                 color: const Color(0xFF10B981).withValues(alpha: 0.15),
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.4)),
+                                borderRadius: BorderRadius.circular(10),
                               ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    CurrencyFormatter.formatPaise(sp.salaryCreditAmountPaise!, symbol: sp.currencySymbol),
-                                    style: const TextStyle(
-                                      color: Color(0xFF10B981),
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 12,
+                              child: const Icon(Icons.payments_rounded, color: Color(0xFF10B981), size: 20),
+                            ),
+                            title: const Text('Salary Credited Button', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (sp.isSalaryCreditEnabled && sp.isSalaryCreditAmountSet)
+                                  InkWell(
+                                    onTap: () => _showSalaryCreditAmountDialog(context),
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      margin: const EdgeInsets.only(right: 6),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.4)),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Text(
+                                            CurrencyFormatter.formatPaise(sp.salaryCreditAmountPaise!, symbol: sp.currencySymbol),
+                                            style: const TextStyle(
+                                              color: Color(0xFF10B981),
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 4),
+                                          const Icon(Icons.edit, size: 12, color: Color(0xFF10B981)),
+                                        ],
+                                      ),
                                     ),
                                   ),
-                                  const SizedBox(width: 4),
-                                  const Icon(Icons.edit, size: 12, color: Color(0xFF10B981)),
-                                ],
-                              ),
+                                Switch(
+                                  value: sp.isSalaryCreditEnabled,
+                                  onChanged: (val) {
+                                    sp.setSalaryCreditEnabled(val);
+                                    if (val && !sp.isSalaryCreditAmountSet) {
+                                      _showSalaryCreditAmountDialog(context);
+                                    }
+                                  },
+                                ),
+                              ],
                             ),
+                            onTap: sp.isSalaryCreditEnabled ? () => _showSalaryCreditAmountDialog(context) : null,
                           ),
-                        Switch(
-                          value: sp.isSalaryCreditEnabled,
-                          onChanged: (val) {
-                            sp.setSalaryCreditEnabled(val);
-                            if (val && !sp.isSalaryCreditAmountSet) {
-                              _showSalaryCreditAmountDialog(context);
-                            }
-                          },
-                        ),
-                      ],
-                    ),
-                    onTap: sp.isSalaryCreditEnabled ? () => _showSalaryCreditAmountDialog(context) : null,
-                  ),
-                  const Divider(height: 1),
-                  ListTile(
-                    leading: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF6366F1).withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: const Icon(Icons.account_balance_wallet_rounded, color: Color(0xFF6366F1), size: 20),
-                    ),
-                    title: const Text('Add Expense Button', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                    subtitle: Text(
-                      sp.isMonthlyExpenseEnabled
-                          ? (sp.isMonthlyExpenseAmountSet
-                              ? 'Amount: ${CurrencyFormatter.formatPaise(sp.monthlyExpenseAmountPaise!, symbol: sp.currencySymbol)} (tap to edit)'
-                              : 'Tap to set monthly expense budget')
-                          : 'Quick 1-tap credit button on Expense Account',
-                      style: const TextStyle(fontSize: 11.5),
-                    ),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (sp.isMonthlyExpenseEnabled && sp.isMonthlyExpenseAmountSet)
-                          InkWell(
-                            onTap: () => _showMonthlyExpenseAmountDialog(context),
-                            borderRadius: BorderRadius.circular(8),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                              margin: const EdgeInsets.only(right: 6),
+                          const Divider(height: 1),
+                          ListTile(
+                            leading: Container(
+                              padding: const EdgeInsets.all(8),
                               decoration: BoxDecoration(
                                 color: const Color(0xFF6366F1).withValues(alpha: 0.15),
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: const Color(0xFF6366F1).withValues(alpha: 0.4)),
+                                borderRadius: BorderRadius.circular(10),
                               ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    CurrencyFormatter.formatPaise(sp.monthlyExpenseAmountPaise!, symbol: sp.currencySymbol),
-                                    style: const TextStyle(
-                                      color: Color(0xFF6366F1),
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 12,
+                              child: const Icon(Icons.account_balance_wallet_rounded, color: Color(0xFF6366F1), size: 20),
+                            ),
+                            title: const Text('Monthly Expense Button (Add Expense)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                            subtitle: Text(
+                              sp.isMonthlyExpenseEnabled
+                                  ? (sp.isMonthlyExpenseAmountSet
+                                      ? 'Amount: ${CurrencyFormatter.formatPaise(sp.monthlyExpenseAmountPaise!, symbol: sp.currencySymbol)} (tap to edit)'
+                                      : 'Tap to set monthly expense budget')
+                                  : 'Quick 1-tap transfer button on Expense Account',
+                              style: const TextStyle(fontSize: 11.5),
+                            ),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (sp.isMonthlyExpenseEnabled && sp.isMonthlyExpenseAmountSet)
+                                  InkWell(
+                                    onTap: () => _showMonthlyExpenseAmountDialog(context),
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      margin: const EdgeInsets.only(right: 6),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF6366F1).withValues(alpha: 0.15),
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(color: const Color(0xFF6366F1).withValues(alpha: 0.4)),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Text(
+                                            CurrencyFormatter.formatPaise(sp.monthlyExpenseAmountPaise!, symbol: sp.currencySymbol),
+                                            style: const TextStyle(
+                                              color: Color(0xFF6366F1),
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 4),
+                                          const Icon(Icons.edit, size: 12, color: Color(0xFF6366F1)),
+                                        ],
+                                      ),
                                     ),
                                   ),
-                                  const SizedBox(width: 4),
-                                  const Icon(Icons.edit, size: 12, color: Color(0xFF6366F1)),
-                                ],
-                              ),
+                                Switch(
+                                  value: sp.isMonthlyExpenseEnabled,
+                                  onChanged: (val) {
+                                    sp.setMonthlyExpenseEnabled(val);
+                                    if (val && !sp.isMonthlyExpenseAmountSet) {
+                                      _showMonthlyExpenseAmountDialog(context);
+                                    }
+                                  },
+                                ),
+                              ],
                             ),
+                            onTap: sp.isMonthlyExpenseEnabled ? () => _showMonthlyExpenseAmountDialog(context) : null,
                           ),
-                        Switch(
-                          value: sp.isMonthlyExpenseEnabled,
-                          onChanged: (val) {
-                            sp.setMonthlyExpenseEnabled(val);
-                            if (val && !sp.isMonthlyExpenseAmountSet) {
-                              _showMonthlyExpenseAmountDialog(context);
-                            }
-                          },
-                        ),
+                        ],
                       ],
                     ),
-                    onTap: sp.isMonthlyExpenseEnabled ? () => _showMonthlyExpenseAmountDialog(context) : null,
-                  ),
-                ],
-              ),
+                    if (isAccountsEnabled) ...[
+                      const SizedBox(height: 18),
+                      // 4. ACCOUNT BALANCE MODES
+                      const _SectionHeader(title: 'Account Balance Modes', icon: Icons.tune_rounded),
+                      const _BalanceCalculationSection(),
+                    ],
+                  ],
+                );
+              },
             ),
-            const SizedBox(height: 18),
-
-            // 4. ACCOUNT BALANCE MODES
-            const _SectionHeader(title: 'Account Balance Modes', icon: Icons.tune_rounded),
-            const _BalanceCalculationSection(),
             const SizedBox(height: 18),
 
             // 5. CATEGORIES
@@ -1121,7 +1344,6 @@ class _SettingsScreenState extends State<SettingsScreen>
                   icon: Icons.category_outlined,
                   iconColor: const Color(0xFF8B5CF6),
                   title: 'Manage Categories',
-                  subtitle: 'Add, edit, delete categories & individual budgets',
                   trailing: const Icon(Icons.chevron_right, size: 18, color: Colors.grey),
                   onTap: () {
                     Navigator.push(
@@ -1135,7 +1357,6 @@ class _SettingsScreenState extends State<SettingsScreen>
                   icon: Icons.swap_vert_rounded,
                   iconColor: const Color(0xFF3B82F6),
                   title: 'Category Display Order',
-                  subtitle: 'Drag and drop to reorder category list',
                   trailing: const Icon(Icons.chevron_right, size: 18, color: Colors.grey),
                   onTap: () {
                     Navigator.push(
@@ -1156,7 +1377,6 @@ class _SettingsScreenState extends State<SettingsScreen>
                   icon: Icons.upload_file_rounded,
                   iconColor: const Color(0xFF10B981),
                   title: 'Export Data',
-                  subtitle: 'Export to Excel (.xlsx), PDF, CSV, or JSON',
                   trailing: _isExporting
                       ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
                       : const Icon(Icons.chevron_right, size: 18, color: Colors.grey),
@@ -1167,7 +1387,6 @@ class _SettingsScreenState extends State<SettingsScreen>
                   icon: Icons.table_chart_outlined,
                   iconColor: const Color(0xFF3B82F6),
                   title: 'Import Data (Excel / CSV)',
-                  subtitle: 'Import expenses from spreadsheet (.xlsx, .csv)',
                   trailing: _isImporting
                       ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
                       : const Icon(Icons.chevron_right, size: 18, color: Colors.grey),
@@ -1278,21 +1497,24 @@ class _ModernCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Container(
-      decoration: BoxDecoration(
-        color: theme.cardColor,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: theme.dividerColor.withValues(alpha: 0.15)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 10,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
+    return Material(
+      color: theme.cardColor,
+      borderRadius: BorderRadius.circular(18),
       clipBehavior: Clip.antiAlias,
-      child: Column(children: children),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: theme.dividerColor.withValues(alpha: 0.15)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 10,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Column(children: children),
+      ),
     );
   }
 }
@@ -1301,7 +1523,7 @@ class _ModernTile extends StatelessWidget {
   final IconData icon;
   final Color iconColor;
   final String title;
-  final String subtitle;
+  final String? subtitle;
   final Widget? trailing;
   final VoidCallback? onTap;
   final bool isDestructive;
@@ -1310,7 +1532,7 @@ class _ModernTile extends StatelessWidget {
     required this.icon,
     required this.iconColor,
     required this.title,
-    required this.subtitle,
+    this.subtitle,
     this.trailing,
     this.onTap,
     this.isDestructive = false,
@@ -1336,10 +1558,12 @@ class _ModernTile extends StatelessWidget {
           color: isDestructive ? theme.colorScheme.error : null,
         ),
       ),
-      subtitle: Text(
-        subtitle,
-        style: theme.textTheme.bodySmall?.copyWith(fontSize: 11.5),
-      ),
+      subtitle: (subtitle != null && subtitle!.isNotEmpty)
+          ? Text(
+              subtitle!,
+              style: theme.textTheme.bodySmall?.copyWith(fontSize: 11.5),
+            )
+          : null,
       trailing: trailing,
       onTap: onTap,
     );
@@ -1525,46 +1749,49 @@ class _BalanceModeChips extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-
-    Widget chip(AccountBalanceMode mode, String label) {
-      final selected = currentMode == mode;
-      return GestureDetector(
-        onTap: selected ? null : () {
-          HapticFeedback.selectionClick();
-          onModeChanged(mode);
-        },
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-          decoration: BoxDecoration(
-            color: selected
-                ? theme.colorScheme.primary
-                : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: selected
-                  ? theme.colorScheme.primary
-                  : theme.dividerColor.withValues(alpha: 0.4),
-            ),
-          ),
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.bold,
-              color: selected ? Colors.white : theme.textTheme.bodySmall?.color,
-            ),
-          ),
-        ),
-      );
-    }
+    final isMonthly = currentMode == AccountBalanceMode.monthly;
 
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        chip(AccountBalanceMode.overall, 'Overall'),
-        const SizedBox(width: 6),
-        chip(AccountBalanceMode.monthly, 'Monthly'),
+        GestureDetector(
+          onTap: () {
+            HapticFeedback.selectionClick();
+            onModeChanged(isMonthly ? AccountBalanceMode.overall : AccountBalanceMode.monthly);
+          },
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              color: isMonthly
+                  ? theme.colorScheme.primary.withValues(alpha: 0.15)
+                  : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: isMonthly
+                    ? theme.colorScheme.primary.withValues(alpha: 0.5)
+                    : theme.dividerColor.withValues(alpha: 0.3),
+              ),
+            ),
+            child: Text(
+              isMonthly ? 'Monthly' : 'Overall',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                color: isMonthly ? theme.colorScheme.primary : theme.textTheme.bodySmall?.color,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 4),
+        Switch(
+          value: isMonthly,
+          activeThumbColor: theme.colorScheme.primary,
+          onChanged: (val) {
+            HapticFeedback.selectionClick();
+            onModeChanged(val ? AccountBalanceMode.monthly : AccountBalanceMode.overall);
+          },
+        ),
       ],
     );
   }

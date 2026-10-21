@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../../models/account.dart';
 import '../../models/income.dart';
+import '../../models/transfer.dart';
 import '../../providers/account_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../core/utils/currency_formatter.dart';
@@ -199,34 +200,7 @@ class AccountsScreen extends StatelessWidget {
                                                 ),
                                               ),
                                             ],
-                                            const SizedBox(width: 6),
-                                            Container(
-                                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                              decoration: BoxDecoration(
-                                                color: account.balanceMode == AccountBalanceMode.monthly
-                                                    ? theme.colorScheme.tertiary.withValues(alpha: 0.15)
-                                                    : theme.colorScheme.primary.withValues(alpha: 0.12),
-                                                borderRadius: BorderRadius.circular(8),
-                                              ),
-                                              child: Text(
-                                                account.balanceMode == AccountBalanceMode.monthly ? 'MONTHLY' : 'OVERALL',
-                                                style: TextStyle(
-                                                  color: account.balanceMode == AccountBalanceMode.monthly
-                                                      ? theme.colorScheme.tertiary
-                                                      : theme.colorScheme.primary,
-                                                  fontSize: 9.5,
-                                                  fontWeight: FontWeight.bold,
-                                                ),
-                                              ),
-                                            ),
                                           ],
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          'Opening: ${CurrencyFormatter.formatPaise(account.openingBalanceMinorUnits, symbol: currency)}',
-                                          style: theme.textTheme.bodySmall?.copyWith(
-                                            color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.7),
-                                          ),
                                         ),
                                       ],
                                     ),
@@ -235,11 +209,6 @@ class AccountsScreen extends StatelessWidget {
                                     onSelected: (val) async {
                                       if (val == 'edit') {
                                         AddEditAccountModal.show(context, existingAccount: account);
-                                      } else if (val == 'toggle_mode') {
-                                        final newMode = account.balanceMode == AccountBalanceMode.monthly
-                                            ? AccountBalanceMode.overall
-                                            : AccountBalanceMode.monthly;
-                                        await accountProvider.setAccountBalanceMode(account.id!, newMode);
                                       } else if (val == 'default') {
                                         await accountProvider.setDefaultAccount(account.id!);
                                       } else if (val == 'delete') {
@@ -254,23 +223,6 @@ class AccountsScreen extends StatelessWidget {
                                             Icon(Icons.edit_outlined, size: 20),
                                             SizedBox(width: 8),
                                             Text('Edit Account'),
-                                          ],
-                                        ),
-                                      ),
-                                      PopupMenuItem(
-                                        value: 'toggle_mode',
-                                        child: Row(
-                                          children: [
-                                            Icon(
-                                              account.balanceMode == AccountBalanceMode.monthly
-                                                  ? Icons.all_inclusive_rounded
-                                                  : Icons.calendar_month_rounded,
-                                              size: 20,
-                                            ),
-                                            const SizedBox(width: 8),
-                                            Text(account.balanceMode == AccountBalanceMode.monthly
-                                                ? 'Switch to Overall Balance'
-                                                : 'Switch to Monthly Balance'),
                                           ],
                                         ),
                                       ),
@@ -303,21 +255,9 @@ class AccountsScreen extends StatelessWidget {
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
-                                  Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        account.balanceMode == AccountBalanceMode.monthly
-                                            ? 'Monthly Balance'
-                                            : 'Current Live Balance',
-                                        style: const TextStyle(fontSize: 13, color: Colors.grey, fontWeight: FontWeight.w500),
-                                      ),
-                                      if (account.balanceMode == AccountBalanceMode.monthly)
-                                        const Text(
-                                          'Selected month only',
-                                          style: TextStyle(fontSize: 10, color: Colors.grey),
-                                        ),
-                                    ],
+                                  const Text(
+                                    'Live Balance',
+                                    style: TextStyle(fontSize: 13, color: Colors.grey, fontWeight: FontWeight.w500),
                                   ),
                                   Text(
                                     CurrencyFormatter.formatPaise(liveBalancePaise, symbol: currency),
@@ -367,7 +307,7 @@ class AccountsScreen extends StatelessWidget {
                                         ),
                                       if (showExpenseBtn)
                                         _QuickCreditButton(
-                                          label: 'Add Expense',
+                                          label: 'Monthly Expense',
                                           amount: sp.monthlyExpenseAmountPaise!,
                                           currency: currency,
                                           color: const Color(0xFF6366F1),
@@ -487,38 +427,92 @@ class AccountsScreen extends StatelessWidget {
   ) async {
     HapticFeedback.lightImpact();
     final now = DateTime.now();
-    final income = Income(
-      amountMinorUnits: amountPaise,
-      accountId: account.id!,
-      sourceOrNote: 'Monthly Expense Budget',
-      date: DateTime(now.year, now.month, now.day),
-      timeString: '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}',
-      createdAt: now,
-      updatedAt: now,
-    );
-    await context.read<AccountProvider>().addIncome(income);
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).hideCurrentSnackBar();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  '${CurrencyFormatter.formatPaise(amountPaise, symbol: currency)} credited to ${account.name}',
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                ),
-              ),
-            ],
-          ),
-          backgroundColor: const Color(0xFF6366F1),
-          duration: const Duration(seconds: 2),
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        ),
+    final accountProvider = context.read<AccountProvider>();
+    final accounts = accountProvider.accounts;
+
+    // Find the Salary Account
+    Account? salaryAccount;
+    for (final acc in accounts) {
+      if (acc.id != account.id && acc.name.toLowerCase().contains('salary')) {
+        salaryAccount = acc;
+        break;
+      }
+    }
+    // Fallback to any remaining account if none is explicitly named 'salary'
+    if (salaryAccount == null && accounts.length > 1) {
+      salaryAccount = accounts.firstWhere((a) => a.id != account.id);
+    }
+
+    if (salaryAccount != null) {
+      final transfer = Transfer(
+        amountMinorUnits: amountPaise,
+        fromAccountId: salaryAccount.id!,
+        toAccountId: account.id!,
+        note: 'Monthly Expense Budget Transfer',
+        date: DateTime(now.year, now.month, now.day),
+        timeString: '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}',
+        createdAt: now,
+        updatedAt: now,
       );
+      await accountProvider.addTransfer(transfer);
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    '${CurrencyFormatter.formatPaise(amountPaise, symbol: currency)} transferred from ${salaryAccount.name} to ${account.name}',
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: const Color(0xFF6366F1),
+            duration: const Duration(seconds: 4),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        );
+      }
+    } else {
+      final income = Income(
+        amountMinorUnits: amountPaise,
+        accountId: account.id!,
+        sourceOrNote: 'Monthly Expense Budget',
+        date: DateTime(now.year, now.month, now.day),
+        timeString: '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}',
+        createdAt: now,
+        updatedAt: now,
+      );
+      await accountProvider.addIncome(income);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    '${CurrencyFormatter.formatPaise(amountPaise, symbol: currency)} credited to ${account.name}',
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: const Color(0xFF6366F1),
+            duration: const Duration(seconds: 4),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        );
+      }
     }
   }
 }
