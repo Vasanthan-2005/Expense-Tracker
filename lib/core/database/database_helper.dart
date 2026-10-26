@@ -56,7 +56,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       dbPath,
-      version: 4,
+      version: 5,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
       onConfigure: (db) async {
@@ -92,6 +92,7 @@ class DatabaseHelper {
         color_value INTEGER NOT NULL,
         is_default INTEGER NOT NULL DEFAULT 0,
         balance_mode TEXT NOT NULL DEFAULT 'overall',
+        is_credit_card INTEGER NOT NULL DEFAULT 0,
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL
       )
@@ -291,6 +292,16 @@ class DatabaseHelper {
       } catch (_) {}
     }
 
+    if (oldVersion < 5) {
+      // Add is_credit_card column to existing accounts
+      try {
+        await db.execute("ALTER TABLE accounts ADD COLUMN is_credit_card INTEGER NOT NULL DEFAULT 0");
+      } catch (_) {}
+      try {
+        await db.execute("UPDATE accounts SET is_credit_card = 1 WHERE LOWER(name) LIKE '%credit card%'");
+      } catch (_) {}
+    }
+
     try {
       await db.update('accounts', {'name': 'Expense Account'}, where: 'name = ? OR LOWER(name) = ?', whereArgs: ['UPI / Bank', 'upi / bank']);
     } catch (_) {}
@@ -322,6 +333,27 @@ class DatabaseHelper {
           updatedAt: now,
         );
         await db.insert('accounts', cashAcc.toMap());
+        maps = await db.query('accounts', orderBy: 'is_default DESC, id ASC');
+      }
+
+      final hasCreditCard = maps.any((m) {
+        final name = (m['name'] as String).toLowerCase();
+        final isCc = (m['is_credit_card'] as int?) == 1;
+        return isCc || name.contains('credit card');
+      });
+      if (!hasCreditCard) {
+        final now = DateTime.now();
+        final ccAcc = Account(
+          name: 'Credit Card',
+          openingBalanceMinorUnits: 0,
+          iconCodePoint: Icons.credit_card.codePoint,
+          colorValue: 0xFFF59E0B, // Amber gold
+          isDefault: false,
+          isCreditCard: true,
+          createdAt: now,
+          updatedAt: now,
+        );
+        await db.insert('accounts', ccAcc.toMap());
         maps = await db.query('accounts', orderBy: 'is_default DESC, id ASC');
       }
     }
@@ -426,17 +458,27 @@ class DatabaseHelper {
   }
 
   /// Calculates the live dynamic balance for every account (overall — all history):
-  /// Balance = opening_balance + sum(incomes) - sum(expenses) + sum(transfers_in) - sum(transfers_out)
+  /// For asset accounts: Balance = opening_balance + incomes - expenses + transfers_in - transfers_out
+  /// For credit card accounts: Credit Due = opening_balance + expenses + transfers_out - incomes - transfers_in
   Future<Map<int, int>> getAccountCalculatedBalances() async {
     final db = await database;
     final res = await db.rawQuery('''
       SELECT 
         a.id,
-        a.opening_balance 
-        + COALESCE((SELECT SUM(amount) FROM incomes WHERE account_id = a.id), 0)
-        - COALESCE((SELECT SUM(amount) FROM expenses WHERE account_id = a.id), 0)
-        + COALESCE((SELECT SUM(amount) FROM transfers WHERE to_account_id = a.id), 0)
-        - COALESCE((SELECT SUM(amount) FROM transfers WHERE from_account_id = a.id), 0) AS calculated_balance
+        CASE 
+          WHEN (LOWER(a.name) LIKE '%credit card%') THEN
+            a.opening_balance 
+            + COALESCE((SELECT SUM(amount) FROM expenses WHERE account_id = a.id), 0)
+            + COALESCE((SELECT SUM(amount) FROM transfers WHERE from_account_id = a.id), 0)
+            - COALESCE((SELECT SUM(amount) FROM incomes WHERE account_id = a.id), 0)
+            - COALESCE((SELECT SUM(amount) FROM transfers WHERE to_account_id = a.id), 0)
+          ELSE
+            a.opening_balance 
+            + COALESCE((SELECT SUM(amount) FROM incomes WHERE account_id = a.id), 0)
+            - COALESCE((SELECT SUM(amount) FROM expenses WHERE account_id = a.id), 0)
+            + COALESCE((SELECT SUM(amount) FROM transfers WHERE to_account_id = a.id), 0)
+            - COALESCE((SELECT SUM(amount) FROM transfers WHERE from_account_id = a.id), 0)
+        END AS calculated_balance
       FROM accounts a
     ''');
 
@@ -450,7 +492,8 @@ class DatabaseHelper {
   }
 
   /// Calculates the monthly-only balance for every account for a specific month.
-  /// Monthly balance = sum(incomes in month) - sum(expenses in month) + sum(transfers_in in month) - sum(transfers_out in month)
+  /// For asset accounts: Monthly balance = incomes - expenses + transfers_in - transfers_out
+  /// For credit card accounts: Monthly credit due = expenses + transfers_out - incomes - transfers_in
   /// NOTE: Opening balance is intentionally excluded — monthly mode starts from 0 each month.
   Future<Map<int, int>> getAccountMonthlyBalances(int year, int month) async {
     final db = await database;
@@ -463,12 +506,29 @@ class DatabaseHelper {
     final res = await db.rawQuery('''
       SELECT 
         a.id,
-        COALESCE((SELECT SUM(amount) FROM incomes WHERE account_id = a.id AND date >= ? AND date <= ?), 0)
-        - COALESCE((SELECT SUM(amount) FROM expenses WHERE account_id = a.id AND date >= ? AND date <= ?), 0)
-        + COALESCE((SELECT SUM(amount) FROM transfers WHERE to_account_id = a.id AND date >= ? AND date <= ?), 0)
-        - COALESCE((SELECT SUM(amount) FROM transfers WHERE from_account_id = a.id AND date >= ? AND date <= ?), 0) AS calculated_balance
+        CASE 
+          WHEN (LOWER(a.name) LIKE '%credit card%') THEN
+            COALESCE((SELECT SUM(amount) FROM expenses WHERE account_id = a.id AND date >= ? AND date <= ?), 0)
+            + COALESCE((SELECT SUM(amount) FROM transfers WHERE from_account_id = a.id AND date >= ? AND date <= ?), 0)
+            - COALESCE((SELECT SUM(amount) FROM incomes WHERE account_id = a.id AND date >= ? AND date <= ?), 0)
+            - COALESCE((SELECT SUM(amount) FROM transfers WHERE to_account_id = a.id AND date >= ? AND date <= ?), 0)
+          ELSE
+            COALESCE((SELECT SUM(amount) FROM incomes WHERE account_id = a.id AND date >= ? AND date <= ?), 0)
+            - COALESCE((SELECT SUM(amount) FROM expenses WHERE account_id = a.id AND date >= ? AND date <= ?), 0)
+            + COALESCE((SELECT SUM(amount) FROM transfers WHERE to_account_id = a.id AND date >= ? AND date <= ?), 0)
+            - COALESCE((SELECT SUM(amount) FROM transfers WHERE from_account_id = a.id AND date >= ? AND date <= ?), 0)
+        END AS calculated_balance
       FROM accounts a
-    ''', [startIso, endIso, startIso, endIso, startIso, endIso, startIso, endIso]);
+    ''', [
+      startIso, endIso,
+      startIso, endIso,
+      startIso, endIso,
+      startIso, endIso,
+      startIso, endIso,
+      startIso, endIso,
+      startIso, endIso,
+      startIso, endIso,
+    ]);
 
     final Map<int, int> balanceMap = {};
     for (final row in res) {
@@ -480,7 +540,6 @@ class DatabaseHelper {
   }
 
   /// Calculates the historical closing balance for every account as of the end of a specific month.
-  /// Balance = opening_balance + sum(incomes <= endOfMonth) - sum(expenses <= endOfMonth) + sum(transfers_in <= endOfMonth) - sum(transfers_out <= endOfMonth)
   Future<Map<int, int>> getAccountClosingBalancesForMonth(int year, int month) async {
     final db = await database;
     final yearStr = year.toString().padLeft(4, '0');
@@ -491,13 +550,22 @@ class DatabaseHelper {
     final res = await db.rawQuery('''
       SELECT 
         a.id,
-        a.opening_balance 
-        + COALESCE((SELECT SUM(amount) FROM incomes WHERE account_id = a.id AND date <= ?), 0)
-        - COALESCE((SELECT SUM(amount) FROM expenses WHERE account_id = a.id AND date <= ?), 0)
-        + COALESCE((SELECT SUM(amount) FROM transfers WHERE to_account_id = a.id AND date <= ?), 0)
-        - COALESCE((SELECT SUM(amount) FROM transfers WHERE from_account_id = a.id AND date <= ?), 0) AS calculated_balance
+        CASE 
+          WHEN (LOWER(a.name) LIKE '%credit card%') THEN
+            a.opening_balance 
+            + COALESCE((SELECT SUM(amount) FROM expenses WHERE account_id = a.id AND date <= ?), 0)
+            + COALESCE((SELECT SUM(amount) FROM transfers WHERE from_account_id = a.id AND date <= ?), 0)
+            - COALESCE((SELECT SUM(amount) FROM incomes WHERE account_id = a.id AND date <= ?), 0)
+            - COALESCE((SELECT SUM(amount) FROM transfers WHERE to_account_id = a.id AND date <= ?), 0)
+          ELSE
+            a.opening_balance 
+            + COALESCE((SELECT SUM(amount) FROM incomes WHERE account_id = a.id AND date <= ?), 0)
+            - COALESCE((SELECT SUM(amount) FROM expenses WHERE account_id = a.id AND date <= ?), 0)
+            + COALESCE((SELECT SUM(amount) FROM transfers WHERE to_account_id = a.id AND date <= ?), 0)
+            - COALESCE((SELECT SUM(amount) FROM transfers WHERE from_account_id = a.id AND date <= ?), 0)
+        END AS calculated_balance
       FROM accounts a
-    ''', [endIso, endIso, endIso, endIso]);
+    ''', [endIso, endIso, endIso, endIso, endIso, endIso, endIso, endIso]);
 
     final Map<int, int> balanceMap = {};
     for (final row in res) {

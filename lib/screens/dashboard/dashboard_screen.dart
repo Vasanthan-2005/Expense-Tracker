@@ -761,15 +761,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                 decoration: BoxDecoration(
-                  color: theme.colorScheme.primary.withValues(alpha: 0.12),
+                  color: acc.isCreditCard
+                      ? const Color(0xFFF59E0B).withValues(alpha: 0.15)
+                      : theme.colorScheme.primary.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(
-                  isMonthly ? (monthLabel ?? 'Monthly') : 'Overall',
+                  acc.isCreditCard
+                      ? 'Credit'
+                      : (isMonthly ? (monthLabel ?? 'Monthly') : 'Overall'),
                   style: TextStyle(
                     fontSize: 9.5,
                     fontWeight: FontWeight.bold,
-                    color: theme.colorScheme.primary,
+                    color: acc.isCreditCard
+                        ? const Color(0xFFF59E0B)
+                        : theme.colorScheme.primary,
                   ),
                 ),
               ),

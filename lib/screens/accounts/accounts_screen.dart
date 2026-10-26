@@ -182,7 +182,24 @@ class AccountsScreen extends StatelessWidget {
                                                 overflow: TextOverflow.ellipsis,
                                               ),
                                             ),
-                                            if (account.isDefault) ...[
+                                            if (account.isCreditCard) ...[
+                                              const SizedBox(width: 8),
+                                              Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                                decoration: BoxDecoration(
+                                                  color: const Color(0xFFF59E0B).withValues(alpha: 0.2),
+                                                  borderRadius: BorderRadius.circular(12),
+                                                ),
+                                                child: const Text(
+                                                  'CREDIT CARD',
+                                                  style: TextStyle(
+                                                    color: Color(0xFFF59E0B),
+                                                    fontSize: 10,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                ),
+                                              ),
+                                            ] else if (account.isDefault) ...[
                                               const SizedBox(width: 8),
                                               Container(
                                                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -255,20 +272,117 @@ class AccountsScreen extends StatelessWidget {
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
-                                  const Text(
-                                    'Live Balance',
-                                    style: TextStyle(fontSize: 13, color: Colors.grey, fontWeight: FontWeight.w500),
+                                  Text(
+                                    account.isCreditCard
+                                        ? (liveBalancePaise > 0 ? 'Outstanding Credit' : 'Credit Balance')
+                                        : 'Live Balance',
+                                    style: const TextStyle(fontSize: 13, color: Colors.grey, fontWeight: FontWeight.w500),
                                   ),
                                   Text(
                                     CurrencyFormatter.formatPaise(liveBalancePaise, symbol: currency),
                                     style: TextStyle(
                                       fontSize: 20,
                                       fontWeight: FontWeight.bold,
-                                      color: liveBalancePaise >= 0 ? color : theme.colorScheme.error,
+                                      color: account.isCreditCard
+                                          ? (liveBalancePaise > 0 ? const Color(0xFFF59E0B) : const Color(0xFF10B981))
+                                          : (liveBalancePaise >= 0 ? color : theme.colorScheme.error),
                                     ),
                                   ),
                                 ],
                               ),
+                              // Credit Card Settled Module
+                              if (account.isCreditCard)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 12),
+                                  child: Container(
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: liveBalancePaise > 0
+                                          ? const Color(0xFFF59E0B).withValues(alpha: 0.08)
+                                          : const Color(0xFF10B981).withValues(alpha: 0.08),
+                                      borderRadius: BorderRadius.circular(14),
+                                      border: Border.all(
+                                        color: liveBalancePaise > 0
+                                            ? const Color(0xFFF59E0B).withValues(alpha: 0.3)
+                                            : const Color(0xFF10B981).withValues(alpha: 0.25),
+                                      ),
+                                    ),
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Row(
+                                                children: [
+                                                  Icon(
+                                                    liveBalancePaise > 0 ? Icons.credit_score_rounded : Icons.verified_rounded,
+                                                    size: 16,
+                                                    color: liveBalancePaise > 0 ? const Color(0xFFF59E0B) : const Color(0xFF10B981),
+                                                  ),
+                                                  const SizedBox(width: 6),
+                                                  Text(
+                                                    liveBalancePaise > 0 ? 'Credit to Settle' : 'Credit Settled',
+                                                    style: TextStyle(
+                                                      fontWeight: FontWeight.bold,
+                                                      fontSize: 13,
+                                                      color: liveBalancePaise > 0 ? const Color(0xFFF59E0B) : const Color(0xFF10B981),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                              const SizedBox(height: 2),
+                                              Text(
+                                                liveBalancePaise > 0
+                                                    ? 'Deducts ${CurrencyFormatter.formatPaise(liveBalancePaise, symbol: currency)} from Salary Account'
+                                                    : 'No outstanding bill pending',
+                                                style: TextStyle(
+                                                  fontSize: 11,
+                                                  color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.75),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        FilledButton.icon(
+                                          onPressed: liveBalancePaise > 0
+                                              ? () => _settleCreditCard(
+                                                    context,
+                                                    account,
+                                                    liveBalancePaise,
+                                                    currency,
+                                                  )
+                                              : () {
+                                                  ScaffoldMessenger.of(context).showSnackBar(
+                                                    const SnackBar(
+                                                      content: Text('Credit Card has zero outstanding balance.'),
+                                                      duration: Duration(seconds: 2),
+                                                    ),
+                                                  );
+                                                },
+                                          style: FilledButton.styleFrom(
+                                            backgroundColor: liveBalancePaise > 0
+                                                ? const Color(0xFFF59E0B)
+                                                : const Color(0xFF10B981),
+                                            foregroundColor: Colors.white,
+                                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                          ),
+                                          icon: Icon(
+                                            liveBalancePaise > 0 ? Icons.check_circle_outline_rounded : Icons.done_all_rounded,
+                                            size: 16,
+                                          ),
+                                          label: Text(
+                                            liveBalancePaise > 0 ? 'Settle' : 'Settled ✓',
+                                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
                               // Quick Credit Buttons
                               Builder(builder: (context) {
                                 final sp = context.watch<SettingsProvider>();
@@ -511,6 +625,79 @@ class AccountsScreen extends StatelessWidget {
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
+        );
+      }
+    }
+  }
+
+  Future<void> _settleCreditCard(
+    BuildContext context,
+    Account creditCardAccount,
+    int amountPaise,
+    String currency,
+  ) async {
+    final accountProvider = context.read<AccountProvider>();
+    final accounts = accountProvider.accounts;
+
+    // Find Salary Account
+    Account? salaryAcc;
+    for (final a in accounts) {
+      if (a.id != creditCardAccount.id && a.name.toLowerCase().contains('salary')) {
+        salaryAcc = a;
+        break;
+      }
+    }
+    if (salaryAcc == null) {
+      for (final a in accounts) {
+        if (a.id != creditCardAccount.id && !a.isCreditCard) {
+          salaryAcc = a;
+          break;
+        }
+      }
+    }
+
+    if (salaryAcc == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No bank or salary account found to pay from.')),
+      );
+      return;
+    }
+
+    HapticFeedback.mediumImpact();
+    try {
+      await accountProvider.settleCreditCard(
+        creditCardAccount: creditCardAccount,
+        amountPaise: amountPaise,
+        sourceAccount: salaryAcc,
+      );
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Credit card settled! ${CurrencyFormatter.formatPaise(amountPaise, symbol: currency)} deducted from ${salaryAcc.name}.',
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: const Color(0xFF10B981),
+            duration: const Duration(seconds: 4),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to settle credit card: $e')),
         );
       }
     }

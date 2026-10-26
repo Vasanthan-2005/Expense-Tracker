@@ -34,6 +34,7 @@ class _AddEditAccountModalState extends State<AddEditAccountModal> {
   int _selectedIconCode = Icons.account_balance.codePoint;
   int _selectedColorValue = 0xFF10B981; // Emerald
   bool _isDefault = false;
+  bool _isCreditCard = false;
   AccountBalanceMode _balanceMode = AccountBalanceMode.overall;
   bool _isSaving = false;
 
@@ -71,6 +72,7 @@ class _AddEditAccountModalState extends State<AddEditAccountModal> {
       _selectedIconCode = acc.iconCodePoint;
       _selectedColorValue = acc.colorValue;
       _isDefault = acc.isDefault;
+      _isCreditCard = acc.isCreditCard;
       _balanceMode = acc.balanceMode;
     }
   }
@@ -108,6 +110,7 @@ class _AddEditAccountModalState extends State<AddEditAccountModal> {
       iconCodePoint: _selectedIconCode,
       colorValue: _selectedColorValue,
       isDefault: _isDefault,
+      isCreditCard: _isCreditCard || nameText.toLowerCase().contains('credit card'),
       balanceMode: _balanceMode,
       createdAt: widget.existingAccount?.createdAt ?? now,
       updatedAt: now,
@@ -213,6 +216,20 @@ class _AddEditAccountModalState extends State<AddEditAccountModal> {
                           _nameController.text = 'Salary Account';
                           _selectedIconCode = Icons.account_balance.codePoint;
                           _selectedColorValue = 0xFF3B82F6;
+                          _isCreditCard = false;
+                        });
+                      },
+                    ),
+                    const SizedBox(width: 6),
+                    ActionChip(
+                      avatar: const Icon(Icons.credit_card, size: 16, color: Color(0xFFF59E0B)),
+                      label: const Text('Credit Card', style: TextStyle(fontSize: 12)),
+                      onPressed: () {
+                        setState(() {
+                          _nameController.text = 'Credit Card';
+                          _selectedIconCode = Icons.credit_card.codePoint;
+                          _selectedColorValue = 0xFFF59E0B;
+                          _isCreditCard = true;
                         });
                       },
                     ),
@@ -338,6 +355,16 @@ class _AddEditAccountModalState extends State<AddEditAccountModal> {
               subtitle: const Text('Automatically selected for quick expenses & floating bubble'),
               value: _isDefault,
               onChanged: (val) => setState(() => _isDefault = val),
+            ),
+            const SizedBox(height: 8),
+
+            // Credit Card Account Switch
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Credit Card Account', style: TextStyle(fontWeight: FontWeight.w600)),
+              subtitle: const Text('Spendings add to credit dues and can be settled from Salary Account'),
+              value: _isCreditCard,
+              onChanged: (val) => setState(() => _isCreditCard = val),
             ),
             const SizedBox(height: 16),
 

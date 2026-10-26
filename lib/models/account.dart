@@ -28,6 +28,7 @@ class Account {
   final int colorValue;
   final bool isDefault;
   final AccountBalanceMode balanceMode;
+  final bool _isCreditCard;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -40,9 +41,14 @@ class Account {
     required this.colorValue,
     this.isDefault = false,
     this.balanceMode = AccountBalanceMode.overall,
+    bool isCreditCard = false,
     required this.createdAt,
     required this.updatedAt,
-  });
+  }) : _isCreditCard = isCreditCard;
+
+  /// Whether this account is a credit card account (where spending adds to credit dues)
+  bool get isCreditCard =>
+      _isCreditCard || name.trim().toLowerCase().contains('credit card');
 
   /// Opening balance in major currency units (e.g., Rupees as double)
   double get openingBalanceDouble => openingBalanceMinorUnits / 100.0;
@@ -65,21 +71,25 @@ class Account {
       'color_value': colorValue,
       'is_default': isDefault ? 1 : 0,
       'balance_mode': balanceMode.key,
+      'is_credit_card': isCreditCard ? 1 : 0,
       'created_at': createdAt.millisecondsSinceEpoch,
       'updated_at': updatedAt.millisecondsSinceEpoch,
     };
   }
 
   factory Account.fromMap(Map<String, dynamic> map) {
+    final name = map['name'] as String;
+    final isCc = (map['is_credit_card'] as int?) == 1 || name.toLowerCase().contains('credit card');
     return Account(
       id: map['id'] as int?,
-      name: map['name'] as String,
+      name: name,
       openingBalanceMinorUnits: (map['opening_balance'] as int?) ?? 0,
       iconCodePoint: map['icon_code'] as int,
       iconFontFamily: map['icon_font_family'] as String?,
       colorValue: map['color_value'] as int,
       isDefault: (map['is_default'] as int?) == 1,
       balanceMode: AccountBalanceMode.fromKey(map['balance_mode'] as String?),
+      isCreditCard: isCc,
       createdAt: DateTime.fromMillisecondsSinceEpoch(map['created_at'] as int),
       updatedAt: DateTime.fromMillisecondsSinceEpoch(map['updated_at'] as int),
     );
@@ -94,6 +104,7 @@ class Account {
     int? colorValue,
     bool? isDefault,
     AccountBalanceMode? balanceMode,
+    bool? isCreditCard,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
@@ -106,6 +117,7 @@ class Account {
       colorValue: colorValue ?? this.colorValue,
       isDefault: isDefault ?? this.isDefault,
       balanceMode: balanceMode ?? this.balanceMode,
+      isCreditCard: isCreditCard ?? this.isCreditCard,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
@@ -141,6 +153,17 @@ class Account {
         iconCodePoint: Icons.account_balance.codePoint,
         colorValue: 0xFF3B82F6, // Blue
         isDefault: false,
+        createdAt: now,
+        updatedAt: now,
+      ),
+      Account(
+        id: 4,
+        name: 'Credit Card',
+        openingBalanceMinorUnits: 0,
+        iconCodePoint: Icons.credit_card.codePoint,
+        colorValue: 0xFFF59E0B, // Amber gold
+        isDefault: false,
+        isCreditCard: true,
         createdAt: now,
         updatedAt: now,
       ),

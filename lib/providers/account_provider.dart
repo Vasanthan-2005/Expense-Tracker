@@ -65,12 +65,17 @@ class AccountProvider with ChangeNotifier {
   int get selectedBalanceMonth => _selectedBalanceMonth;
 
   /// Total combined net worth in Paise across all active accounts.
-  /// For accounts in monthly mode, uses the monthly balance for the currently
-  /// selected month. For accounts in overall mode, uses the overall balance.
+  /// Asset balances add to net worth, while credit card balances (liabilities)
+  /// reduce net worth.
   int get totalNetWorthPaise {
     int total = 0;
     for (final account in _accounts) {
-      total += getAccountBalancePaise(account.id!);
+      final bal = getAccountBalancePaise(account.id!);
+      if (account.isCreditCard) {
+        total -= bal; // Liabilities reduce net worth
+      } else {
+        total += bal; // Assets increase net worth
+      }
     }
     return total;
   }
@@ -263,5 +268,55 @@ class AccountProvider with ChangeNotifier {
   Future<void> deleteTransfer(int id) async {
     await DatabaseHelper.instance.deleteTransfer(id);
     await refreshAccounts();
+  }
+
+  /// Settles the outstanding credit card balance by transferring money from
+  /// the Salary Account (or fallback account) into the Credit Card account.
+  Future<Transfer> settleCreditCard({
+    required Account creditCardAccount,
+    int? amountPaise,
+    Account? sourceAccount,
+  }) async {
+    final amountToSettle = amountPaise ?? getAccountBalancePaise(creditCardAccount.id!);
+    if (amountToSettle <= 0) {
+      throw Exception('No outstanding credit to settle');
+    }
+
+    Account? salaryAcc = sourceAccount;
+    if (salaryAcc == null) {
+      for (final a in _accounts) {
+        if (a.id != creditCardAccount.id && a.name.toLowerCase().contains('salary')) {
+          salaryAcc = a;
+          break;
+        }
+      }
+    }
+    if (salaryAcc == null) {
+      for (final a in _accounts) {
+        if (a.id != creditCardAccount.id && !a.isCreditCard) {
+          salaryAcc = a;
+          break;
+        }
+      }
+    }
+
+    if (salaryAcc == null) {
+      throw Exception('No account available to settle from');
+    }
+
+    final now = DateTime.now();
+    final transfer = Transfer(
+      amountMinorUnits: amountToSettle,
+      fromAccountId: salaryAcc.id!,
+      toAccountId: creditCardAccount.id!,
+      note: 'Credit Card Bill Settlement',
+      date: DateTime(now.year, now.month, now.day),
+      timeString: '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}',
+      createdAt: now,
+      updatedAt: now,
+    );
+
+    await addTransfer(transfer);
+    return transfer;
   }
 }
