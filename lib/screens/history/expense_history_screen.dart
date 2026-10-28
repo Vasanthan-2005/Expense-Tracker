@@ -8,7 +8,6 @@ import '../../providers/category_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../providers/reports_provider.dart';
 import '../../providers/account_provider.dart';
-import '../../core/database/database_helper.dart';
 import '../../core/utils/currency_formatter.dart';
 import '../../core/utils/date_formatter.dart';
 import '../../widgets/expense_tile.dart';
@@ -29,7 +28,6 @@ class _ExpenseHistoryScreenState extends State<ExpenseHistoryScreen> {
   // Tracks the month for which we've loaded historical balances
   int? _balanceLoadedYear;
   int? _balanceLoadedMonth;
-  Map<int, int> _historicalBalances = {};
 
   @override
   void initState() {
@@ -52,36 +50,17 @@ class _ExpenseHistoryScreenState extends State<ExpenseHistoryScreen> {
     if (!mounted) return;
     if (!context.read<SettingsProvider>().isAccountsSectionEnabled) return;
     final selMonth = context.read<ExpenseProvider>().selectedMonth;
-    final now = DateTime.now();
-    final isCurrentMonth = selMonth.year == now.year && selMonth.month == now.month;
 
     if (_balanceLoadedYear == selMonth.year && _balanceLoadedMonth == selMonth.month) return;
 
     final accountProvider = context.read<AccountProvider>();
     await accountProvider.setSelectedBalanceMonth(selMonth.year, selMonth.month);
 
-    if (isCurrentMonth) {
-      if (mounted) {
-        setState(() {
-          _historicalBalances = {};
-          _balanceLoadedYear = selMonth.year;
-          _balanceLoadedMonth = selMonth.month;
-        });
-      }
-    } else {
-      try {
-        final balances = await DatabaseHelper.instance
-            .getAccountClosingBalancesForMonth(selMonth.year, selMonth.month);
-        if (mounted) {
-          setState(() {
-            _historicalBalances = balances;
-            _balanceLoadedYear = selMonth.year;
-            _balanceLoadedMonth = selMonth.month;
-          });
-        }
-      } catch (e) {
-        debugPrint('Error loading historical balances: $e');
-      }
+    if (mounted) {
+      setState(() {
+        _balanceLoadedYear = selMonth.year;
+        _balanceLoadedMonth = selMonth.month;
+      });
     }
   }
 
@@ -243,14 +222,7 @@ class _ExpenseHistoryScreenState extends State<ExpenseHistoryScreen> {
     }).toList();
 
     int getBalance(Account acc) {
-      if (acc.balanceMode == AccountBalanceMode.monthly) {
-        return accountProvider.getMonthlyAccountBalancePaise(acc.id!);
-      }
-      if (isCurrentMonth) {
-        return accountProvider.getOverallAccountBalancePaise(acc.id!);
-      } else {
-        return _historicalBalances[acc.id!] ?? accountProvider.getOverallAccountBalancePaise(acc.id!);
-      }
+      return accountProvider.getDisplayBalancePaise(acc, isCurrentMonth: isCurrentMonth);
     }
 
     // Flatten expenses into header & transaction items for 100% lazy ListView virtualization
@@ -445,7 +417,7 @@ class _ExpenseHistoryScreenState extends State<ExpenseHistoryScreen> {
                   ),
                   const SizedBox(width: 6),
                   Text(
-                    isCurrentMonth ? 'Live Balance' : '${_monthNames[selMonth.month - 1]} End Balance',
+                    isCurrentMonth ? 'Live Balance' : '${_monthNames[selMonth.month - 1]} Balance Added',
                     style: theme.textTheme.labelSmall?.copyWith(
                       fontWeight: FontWeight.bold,
                       color: theme.colorScheme.primary.withValues(alpha: 0.8),
@@ -460,6 +432,12 @@ class _ExpenseHistoryScreenState extends State<ExpenseHistoryScreen> {
                         children: displayAccounts.map((acc) {
                           final bal = getBalance(acc);
                           final accColor = Color(acc.colorValue);
+                          final String accLabel;
+                          if (isCurrentMonth) {
+                            accLabel = acc.balanceMode == AccountBalanceMode.monthly ? '${acc.name} (Mo)' : acc.name;
+                          } else {
+                            accLabel = acc.balanceMode == AccountBalanceMode.monthly ? '${acc.name} (Added)' : '${acc.name} (Total Added)';
+                          }
                           return Container(
                             margin: const EdgeInsets.only(right: 8),
                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -474,7 +452,7 @@ class _ExpenseHistoryScreenState extends State<ExpenseHistoryScreen> {
                                 Icon(acc.iconData, size: 12, color: accColor),
                                 const SizedBox(width: 5),
                                 Text(
-                                  acc.balanceMode == AccountBalanceMode.monthly ? '${acc.name} (Mo)' : acc.name,
+                                  accLabel,
                                   style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: accColor),
                                 ),
                                 const SizedBox(width: 5),

@@ -6,13 +6,25 @@ import '../../providers/category_provider.dart';
 
 class CategoryFormDialog extends StatefulWidget {
   final Category? existingCategory;
+  final String categoryType;
 
-  const CategoryFormDialog({super.key, this.existingCategory});
+  const CategoryFormDialog({
+    super.key,
+    this.existingCategory,
+    this.categoryType = 'expense',
+  });
 
-  static Future<void> show(BuildContext context, {Category? existingCategory}) async {
+  static Future<void> show(
+    BuildContext context, {
+    Category? existingCategory,
+    String categoryType = 'expense',
+  }) async {
     await showDialog(
       context: context,
-      builder: (ctx) => CategoryFormDialog(existingCategory: existingCategory),
+      builder: (ctx) => CategoryFormDialog(
+        existingCategory: existingCategory,
+        categoryType: existingCategory?.type ?? categoryType,
+      ),
     );
   }
 
@@ -26,6 +38,8 @@ class _CategoryFormDialogState extends State<CategoryFormDialog> {
   late int _selectedIconCode;
   late int _selectedColorValue;
   bool _isSaving = false;
+
+  bool get _isIncome => (widget.existingCategory?.type ?? widget.categoryType) == 'income';
 
   static const List<IconData> availableIcons = [
     Icons.restaurant,
@@ -47,6 +61,14 @@ class _CategoryFormDialogState extends State<CategoryFormDialog> {
     Icons.work,
     Icons.card_giftcard,
     Icons.build,
+    Icons.payments,
+    Icons.account_balance_wallet,
+    Icons.savings,
+    Icons.two_wheeler,
+    Icons.assignment_turned_in,
+    Icons.trending_up,
+    Icons.monetization_on,
+    Icons.paid,
     Icons.more_horiz,
   ];
 
@@ -65,6 +87,7 @@ class _CategoryFormDialogState extends State<CategoryFormDialog> {
     0xFF009688, // Teal
     0xFF607D8B, // Blue Grey
     0xFF8BC34A, // Light Green
+    0xFF10B981, // Emerald Green
   ];
 
   @override
@@ -79,8 +102,8 @@ class _CategoryFormDialogState extends State<CategoryFormDialog> {
         _budgetController.text = cat.monthlyBudgetDouble.toStringAsFixed(0);
       }
     } else {
-      _selectedIconCode = availableIcons.first.codePoint;
-      _selectedColorValue = availableColors.first;
+      _selectedIconCode = _isIncome ? Icons.payments.codePoint : availableIcons.first.codePoint;
+      _selectedColorValue = _isIncome ? 0xFF10B981 : availableColors.first;
     }
   }
 
@@ -101,11 +124,13 @@ class _CategoryFormDialogState extends State<CategoryFormDialog> {
     }
 
     int? budgetPaise;
-    final budgetText = _budgetController.text.trim();
-    if (budgetText.isNotEmpty) {
-      final doubleVal = double.tryParse(budgetText);
-      if (doubleVal != null && doubleVal >= 0) {
-        budgetPaise = (doubleVal * 100).round();
+    if (!_isIncome) {
+      final budgetText = _budgetController.text.trim();
+      if (budgetText.isNotEmpty) {
+        final doubleVal = double.tryParse(budgetText);
+        if (doubleVal != null && doubleVal >= 0) {
+          budgetPaise = (doubleVal * 100).round();
+        }
       }
     }
 
@@ -124,6 +149,7 @@ class _CategoryFormDialogState extends State<CategoryFormDialog> {
           isDefault: false,
           createdAt: DateTime.now(),
           monthlyBudgetPaise: budgetPaise,
+          type: widget.categoryType,
         );
         await categoryProvider.addCategory(newCategory);
       } else {
@@ -132,7 +158,8 @@ class _CategoryFormDialogState extends State<CategoryFormDialog> {
           iconCodePoint: _selectedIconCode,
           colorValue: _selectedColorValue,
           monthlyBudgetPaise: budgetPaise,
-          resetMonthlyBudget: budgetText.isEmpty,
+          resetMonthlyBudget: !_isIncome && _budgetController.text.trim().isEmpty,
+          type: widget.existingCategory!.type,
         );
         await categoryProvider.updateCategory(updatedCategory);
       }
@@ -158,9 +185,10 @@ class _CategoryFormDialogState extends State<CategoryFormDialog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final categoryLabel = _isIncome ? 'Income Category' : 'Expense Category';
 
     return AlertDialog(
-      title: Text(widget.existingCategory == null ? 'Add Category' : 'Edit Category'),
+      title: Text(widget.existingCategory == null ? 'Add $categoryLabel' : 'Edit $categoryLabel'),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -169,23 +197,25 @@ class _CategoryFormDialogState extends State<CategoryFormDialog> {
             TextField(
               controller: _nameController,
               autofocus: true,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 labelText: 'Category Name',
-                hintText: 'Category name',
+                hintText: _isIncome ? 'e.g. Salary, Jman Claim, Rapido' : 'e.g. Groceries, Shopping',
               ),
             ),
             const SizedBox(height: 12),
 
-            TextField(
-              controller: _budgetController,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(
-                labelText: 'Monthly Budget (Optional)',
-                hintText: '0 (Default: No limit)',
-                prefixText: '₹ ',
+            if (!_isIncome) ...[
+              TextField(
+                controller: _budgetController,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(
+                  labelText: 'Monthly Budget (Optional)',
+                  hintText: '0 (Default: No limit)',
+                  prefixText: '₹ ',
+                ),
               ),
-            ),
-            const SizedBox(height: 16),
+              const SizedBox(height: 16),
+            ],
 
             Text('Select Icon', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),

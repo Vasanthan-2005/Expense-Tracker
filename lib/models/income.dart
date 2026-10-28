@@ -2,6 +2,7 @@ class Income {
   final int? id;
   final int amountMinorUnits; // Paise
   final int accountId;
+  final int? categoryId;
   final String? sourceOrNote;
   final DateTime date;
   final String timeString; // HH:mm format
@@ -12,6 +13,7 @@ class Income {
     this.id,
     required this.amountMinorUnits,
     required this.accountId,
+    this.categoryId,
     this.sourceOrNote,
     required this.date,
     required this.timeString,
@@ -20,6 +22,7 @@ class Income {
   });
 
   double get amountDouble => amountMinorUnits / 100.0;
+  String? get note => sourceOrNote;
 
   static int doubleToMinorUnits(double value) {
     return (value * 100).round();
@@ -31,6 +34,7 @@ class Income {
       if (id != null) 'id': id,
       'amount': amountMinorUnits,
       'account_id': accountId,
+      if (categoryId != null) 'category_id': categoryId,
       'source_or_note': sourceOrNote ?? '',
       'date': dateIso,
       'time': timeString,
@@ -51,6 +55,7 @@ class Income {
       id: map['id'] as int?,
       amountMinorUnits: map['amount'] as int,
       accountId: map['account_id'] as int,
+      categoryId: map['category_id'] as int?,
       sourceOrNote: (map['source_or_note'] as String?).toString().isEmpty ? null : map['source_or_note'] as String?,
       date: DateTime(parsedDate.year, parsedDate.month, parsedDate.day),
       timeString: (map['time'] as String?) ?? '00:00',
@@ -63,6 +68,8 @@ class Income {
     int? id,
     int? amountMinorUnits,
     int? accountId,
+    int? categoryId,
+    bool resetCategoryId = false,
     String? sourceOrNote,
     DateTime? date,
     String? timeString,
@@ -73,6 +80,7 @@ class Income {
       id: id ?? this.id,
       amountMinorUnits: amountMinorUnits ?? this.amountMinorUnits,
       accountId: accountId ?? this.accountId,
+      categoryId: resetCategoryId ? null : (categoryId ?? this.categoryId),
       sourceOrNote: sourceOrNote ?? this.sourceOrNote,
       date: date ?? this.date,
       timeString: timeString ?? this.timeString,

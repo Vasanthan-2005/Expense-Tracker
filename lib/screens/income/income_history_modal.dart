@@ -3,6 +3,8 @@ import 'package:provider/provider.dart';
 
 import '../../models/income.dart';
 import '../../providers/account_provider.dart';
+import '../../providers/category_provider.dart';
+import '../../providers/reports_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../core/utils/currency_formatter.dart';
 import '../../core/utils/date_formatter.dart';
@@ -258,104 +260,162 @@ class _IncomeHistoryScreenState extends State<IncomeHistoryScreen> {
                         final income = incomes[idx];
                         final acc = accountMap[income.accountId];
                         final accColor = acc != null ? Color(acc.colorValue) : const Color(0xFF10B981);
+                        final cat = income.categoryId != null
+                            ? context.watch<CategoryProvider>().getCategoryById(income.categoryId!)
+                            : null;
+                        final catColor = cat != null ? Color(cat.colorValue) : null;
 
-                        return Card(
-                          elevation: 1,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                          child: ListTile(
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                            leading: Container(
-                              width: 44,
-                              height: 44,
-                              decoration: BoxDecoration(
-                                color: accColor.withValues(alpha: 0.15),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Icon(acc?.iconData ?? Icons.account_balance_wallet, color: accColor, size: 22),
+                        final titleText = (income.sourceOrNote != null && income.sourceOrNote!.trim().isNotEmpty)
+                            ? income.sourceOrNote!.trim()
+                            : (cat?.name ?? 'Income Received');
+
+                        return Dismissible(
+                          key: ValueKey('income_${income.id}'),
+                          direction: DismissDirection.endToStart,
+                          background: Container(
+                            alignment: Alignment.centerRight,
+                            padding: const EdgeInsets.only(right: 20),
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.error,
+                              borderRadius: BorderRadius.circular(16),
                             ),
-                            title: Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    income.sourceOrNote?.isNotEmpty == true ? income.sourceOrNote! : 'Income Received',
-                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
+                            child: const Icon(Icons.delete_outline, color: Colors.white, size: 24),
+                          ),
+                          confirmDismiss: (_) async {
+                            final confirmed = await showDialog<bool>(
+                              context: context,
+                              builder: (dCtx) => AlertDialog(
+                                title: const Text('Delete Income Record?'),
+                                content: const Text(
+                                  'This income transaction will be deleted and your live account balance will be updated automatically.',
                                 ),
-                                Text(
-                                  '+${CurrencyFormatter.formatPaise(income.amountMinorUnits, symbol: currency)}',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: 15,
-                                    color: Color(0xFF10B981),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(dCtx, false),
+                                    child: const Text('Cancel'),
                                   ),
-                                ),
-                              ],
-                            ),
-                            subtitle: Padding(
-                              padding: const EdgeInsets.only(top: 4),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Row(
-                                    children: [
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                        decoration: BoxDecoration(
-                                          color: accColor.withValues(alpha: 0.15),
-                                          borderRadius: BorderRadius.circular(6),
-                                        ),
-                                        child: Text(
-                                          acc?.name ?? 'Account',
-                                          style: TextStyle(color: accColor, fontSize: 10, fontWeight: FontWeight.bold),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        "${DateFormatter.formatRelativeDate(income.date)} • ${income.timeString}",
-                                        style: theme.textTheme.bodySmall?.copyWith(fontSize: 11),
-                                      ),
-                                    ],
-                                  ),
-                                  PopupMenuButton<String>(
-                                    icon: const Icon(Icons.more_vert, size: 18, color: Colors.grey),
-                                    padding: EdgeInsets.zero,
-                                    constraints: const BoxConstraints(),
-                                    onSelected: (action) {
-                                      if (action == 'edit') {
-                                        AddEditIncomeScreen.show(context, existingIncome: income);
-                                      } else if (action == 'delete') {
-                                        _confirmDeleteIncome(context, income);
-                                      }
-                                    },
-                                    itemBuilder: (ctx) => [
-                                      const PopupMenuItem(
-                                        value: 'edit',
-                                        child: Row(
-                                          children: [
-                                            Icon(Icons.edit_outlined, size: 18),
-                                            SizedBox(width: 8),
-                                            Text('Edit'),
-                                          ],
-                                        ),
-                                      ),
-                                      PopupMenuItem(
-                                        value: 'delete',
-                                        child: Row(
-                                          children: [
-                                            Icon(Icons.delete_outline, color: theme.colorScheme.error, size: 18),
-                                            const SizedBox(width: 8),
-                                            Text('Delete', style: TextStyle(color: theme.colorScheme.error)),
-                                          ],
-                                        ),
-                                      ),
-                                    ],
+                                  FilledButton(
+                                    style: FilledButton.styleFrom(backgroundColor: theme.colorScheme.error),
+                                    onPressed: () => Navigator.pop(dCtx, true),
+                                    child: const Text('Delete'),
                                   ),
                                 ],
                               ),
+                            );
+                            return confirmed ?? false;
+                          },
+                          onDismissed: (_) async {
+                            await context.read<AccountProvider>().deleteIncome(income.id!);
+                            if (context.mounted) {
+                              final categoryProvider = context.read<CategoryProvider>();
+                              final settings = context.read<SettingsProvider>();
+                              context.read<ReportsProvider>().loadReportSummary(
+                                categories: categoryProvider.allCategories.isNotEmpty
+                                    ? categoryProvider.allCategories
+                                    : categoryProvider.categories,
+                                currencySymbol: settings.currencySymbol,
+                                showLoadingIndicator: false,
+                              );
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Income record deleted.')),
+                              );
+                            }
+                          },
+                          child: Card(
+                            elevation: 1,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                            child: ListTile(
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                              leading: Container(
+                                width: 44,
+                                height: 44,
+                                decoration: BoxDecoration(
+                                  color: (catColor ?? accColor).withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Icon(cat?.iconData ?? acc?.iconData ?? Icons.account_balance_wallet, color: catColor ?? accColor, size: 22),
+                              ),
+                              title: Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      titleText,
+                                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  Text(
+                                    '+${CurrencyFormatter.formatPaise(income.amountMinorUnits, symbol: currency)}',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 15,
+                                      color: Color(0xFF10B981),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              subtitle: Padding(
+                                padding: const EdgeInsets.only(top: 4),
+                                child: Row(
+                                  children: [
+                                    if (cat != null) ...[
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: catColor!.withValues(alpha: 0.15),
+                                          borderRadius: BorderRadius.circular(6),
+                                        ),
+                                        child: Text(
+                                          cat.name,
+                                          style: TextStyle(color: catColor, fontSize: 10, fontWeight: FontWeight.bold),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                    ],
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: accColor.withValues(alpha: 0.15),
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: Text(
+                                        acc?.name ?? 'Account',
+                                        style: TextStyle(color: accColor, fontSize: 10, fontWeight: FontWeight.bold),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        "${DateFormatter.formatRelativeDate(income.date)} • ${income.timeString}",
+                                        style: theme.textTheme.bodySmall?.copyWith(fontSize: 11),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                    icon: const Icon(Icons.edit_outlined, size: 18),
+                                    tooltip: 'Edit Income',
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                                    onPressed: () => AddEditIncomeScreen.show(context, existingIncome: income),
+                                  ),
+                                  IconButton(
+                                    icon: Icon(Icons.delete_outline, size: 18, color: theme.colorScheme.error),
+                                    tooltip: 'Delete Income',
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                                    onPressed: () => _confirmDeleteIncome(context, income),
+                                  ),
+                                ],
+                              ),
+                              onTap: () => AddEditIncomeScreen.show(context, existingIncome: income),
                             ),
-                            onTap: () => AddEditIncomeScreen.show(context, existingIncome: income),
                           ),
                         );
                       },
@@ -395,6 +455,15 @@ class _IncomeHistoryScreenState extends State<IncomeHistoryScreen> {
     if (confirmed == true && context.mounted) {
       await context.read<AccountProvider>().deleteIncome(income.id!);
       if (context.mounted) {
+        final categoryProvider = context.read<CategoryProvider>();
+        final settings = context.read<SettingsProvider>();
+        context.read<ReportsProvider>().loadReportSummary(
+          categories: categoryProvider.allCategories.isNotEmpty
+              ? categoryProvider.allCategories
+              : categoryProvider.categories,
+          currencySymbol: settings.currencySymbol,
+          showLoadingIndicator: false,
+        );
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Income record deleted.')),
         );

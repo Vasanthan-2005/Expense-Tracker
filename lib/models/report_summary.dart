@@ -1,3 +1,5 @@
+import 'transfer.dart';
+
 enum InsightType { info, warning, success }
 
 class InsightItem {
@@ -66,6 +68,10 @@ class ReportSummary {
   final List<InsightItem> insights;
   final int totalIncomeMinor;
   final int totalExpenseMinor;
+  final List<CategorySpend> incomeCategoryBreakdown;
+  final List<Transfer> periodTransfers;
+  final int totalTransferMinor;
+  final int transferCount;
 
   const ReportSummary({
     required this.todayTotalMinor,
@@ -81,9 +87,14 @@ class ReportSummary {
     required this.insights,
     this.totalIncomeMinor = 0,
     this.totalExpenseMinor = 0,
+    this.incomeCategoryBreakdown = const [],
+    this.periodTransfers = const [],
+    this.totalTransferMinor = 0,
+    this.transferCount = 0,
   });
 
   CategorySpend? get topCategory => categoryBreakdown.isNotEmpty ? categoryBreakdown.first : null;
+  CategorySpend? get topIncomeCategory => incomeCategoryBreakdown.isNotEmpty ? incomeCategoryBreakdown.first : null;
   int get totalSpentMinor => totalExpenseMinor > 0 ? totalExpenseMinor : categoryBreakdown.fold(0, (sum, item) => sum + item.totalMinorUnits);
   double get todayTotalDouble => todayTotalMinor / 100.0;
   double get weekTotalDouble => weekTotalMinor / 100.0;
@@ -92,4 +103,5 @@ class ReportSummary {
   double get highestExpenseDouble => highestExpenseMinor / 100.0;
   double get totalIncomeDouble => totalIncomeMinor / 100.0;
   double get totalExpenseDouble => totalExpenseMinor / 100.0;
+  double get totalTransferDouble => totalTransferMinor / 100.0;
 }

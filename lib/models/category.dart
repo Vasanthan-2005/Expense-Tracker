@@ -12,6 +12,7 @@ class Category {
   final DateTime createdAt;
   final int? monthlyBudgetPaise;
   final int sortOrder;
+  final String type; // 'expense' or 'income'
 
   const Category({
     this.id,
@@ -23,6 +24,7 @@ class Category {
     required this.createdAt,
     this.monthlyBudgetPaise,
     this.sortOrder = 0,
+    this.type = 'expense',
   });
 
   IconData get iconData => IconDataHelper.getIcon(iconCodePoint);
@@ -32,6 +34,8 @@ class Category {
   double get monthlyBudgetDouble => (monthlyBudgetPaise ?? 0) / 100.0;
 
   bool get isBudgetSet => monthlyBudgetPaise != null;
+
+  bool get isIncome => type == 'income';
 
   Map<String, dynamic> toMap() {
     return {
@@ -44,6 +48,7 @@ class Category {
       'created_at': createdAt.millisecondsSinceEpoch,
       'monthly_budget': monthlyBudgetPaise,
       'sort_order': sortOrder,
+      'type': type,
     };
   }
 
@@ -58,6 +63,7 @@ class Category {
       createdAt: DateTime.fromMillisecondsSinceEpoch(map['created_at'] as int),
       monthlyBudgetPaise: map['monthly_budget'] as int?,
       sortOrder: (map['sort_order'] as int?) ?? 0,
+      type: (map['type'] as String?) ?? 'expense',
     );
   }
 
@@ -72,6 +78,7 @@ class Category {
     int? monthlyBudgetPaise,
     bool resetMonthlyBudget = false,
     int? sortOrder,
+    String? type,
   }) {
     return Category(
       id: id ?? this.id,
@@ -83,6 +90,7 @@ class Category {
       createdAt: createdAt ?? this.createdAt,
       monthlyBudgetPaise: resetMonthlyBudget ? null : (monthlyBudgetPaise ?? this.monthlyBudgetPaise),
       sortOrder: sortOrder ?? this.sortOrder,
+      type: type ?? this.type,
     );
   }
 
@@ -97,6 +105,7 @@ class Category {
         isDefault: true,
         createdAt: now,
         sortOrder: 0,
+        type: 'expense',
       ),
       Category(
         id: 2,
@@ -106,6 +115,7 @@ class Category {
         isDefault: true,
         createdAt: now,
         sortOrder: 1,
+        type: 'expense',
       ),
       Category(
         id: 3,
@@ -115,6 +125,7 @@ class Category {
         isDefault: true,
         createdAt: now,
         sortOrder: 2,
+        type: 'expense',
       ),
       Category(
         id: 4,
@@ -124,6 +135,7 @@ class Category {
         isDefault: true,
         createdAt: now,
         sortOrder: 3,
+        type: 'expense',
       ),
       Category(
         id: 5,
@@ -133,6 +145,7 @@ class Category {
         isDefault: true,
         createdAt: now,
         sortOrder: 4,
+        type: 'expense',
       ),
       Category(
         id: 6,
@@ -142,6 +155,7 @@ class Category {
         isDefault: true,
         createdAt: now,
         sortOrder: 5,
+        type: 'expense',
       ),
       Category(
         id: 7,
@@ -151,6 +165,7 @@ class Category {
         isDefault: true,
         createdAt: now,
         sortOrder: 6,
+        type: 'expense',
       ),
       Category(
         id: 8,
@@ -160,6 +175,7 @@ class Category {
         isDefault: true,
         createdAt: now,
         sortOrder: 7,
+        type: 'expense',
       ),
       Category(
         id: 9,
@@ -169,6 +185,7 @@ class Category {
         isDefault: true,
         createdAt: now,
         sortOrder: 8,
+        type: 'expense',
       ),
       Category(
         id: 10,
@@ -178,6 +195,40 @@ class Category {
         isDefault: true,
         createdAt: now,
         sortOrder: 9,
+        type: 'expense',
+      ),
+    ];
+  }
+
+  static List<Category> get defaultIncomeCategories {
+    final now = DateTime.now();
+    return [
+      Category(
+        name: 'Salary',
+        iconCodePoint: Icons.payments.codePoint,
+        colorValue: 0xFF10B981, // Emerald Green
+        isDefault: true,
+        createdAt: now,
+        sortOrder: 0,
+        type: 'income',
+      ),
+      Category(
+        name: 'Jman Claim',
+        iconCodePoint: Icons.receipt_long.codePoint,
+        colorValue: 0xFF3B82F6, // Blue
+        isDefault: true,
+        createdAt: now,
+        sortOrder: 1,
+        type: 'income',
+      ),
+      Category(
+        name: 'Rapido',
+        iconCodePoint: Icons.two_wheeler.codePoint,
+        colorValue: 0xFFF59E0B, // Amber
+        isDefault: true,
+        createdAt: now,
+        sortOrder: 2,
+        type: 'income',
       ),
     ];
   }

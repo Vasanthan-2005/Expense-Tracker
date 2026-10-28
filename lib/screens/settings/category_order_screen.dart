@@ -3,14 +3,23 @@ import 'package:provider/provider.dart';
 
 import '../../providers/category_provider.dart';
 
-class CategoryOrderScreen extends StatelessWidget {
+class CategoryOrderScreen extends StatefulWidget {
   const CategoryOrderScreen({super.key});
+
+  @override
+  State<CategoryOrderScreen> createState() => _CategoryOrderScreenState();
+}
+
+class _CategoryOrderScreenState extends State<CategoryOrderScreen> {
+  String _selectedType = 'expense';
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final categoryProvider = context.watch<CategoryProvider>();
-    final categories = categoryProvider.categories;
+    final categories = _selectedType == 'expense'
+        ? categoryProvider.expenseCategories
+        : categoryProvider.incomeCategories;
 
     return Scaffold(
       appBar: AppBar(
@@ -21,19 +30,45 @@ class CategoryOrderScreen extends StatelessWidget {
           : Column(
               children: [
                 Padding(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                  child: SegmentedButton<String>(
+                    segments: const [
+                      ButtonSegment<String>(
+                        value: 'expense',
+                        label: Text('Expense Categories', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                        icon: Icon(Icons.arrow_upward_rounded, size: 16),
+                      ),
+                      ButtonSegment<String>(
+                        value: 'income',
+                        label: Text('Income Categories', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                        icon: Icon(Icons.arrow_downward_rounded, size: 16),
+                      ),
+                    ],
+                    selected: {_selectedType},
+                    onSelectionChanged: (val) {
+                      setState(() {
+                        _selectedType = val.first;
+                      });
+                    },
+                    style: SegmentedButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                   child: Card(
                     elevation: 0,
                     color: theme.colorScheme.primary.withValues(alpha: 0.08),
                     child: Padding(
-                      padding: const EdgeInsets.all(16),
+                      padding: const EdgeInsets.all(14),
                       child: Row(
                         children: [
                           Icon(Icons.swap_vert, color: theme.colorScheme.primary),
                           const SizedBox(width: 12),
                           Expanded(
                             child: Text(
-                              'Drag and drop items to customize category order. Add Expense and category selectors will reflect this exact order.',
+                              'Drag and drop to customize display order. Selectors will reflect this exact order.',
                               style: theme.textTheme.bodySmall?.copyWith(height: 1.35),
                             ),
                           ),
@@ -47,7 +82,7 @@ class CategoryOrderScreen extends StatelessWidget {
                     padding: const EdgeInsets.only(bottom: 80),
                     itemCount: categories.length,
                     onReorderItem: (oldIndex, newIndex) {
-                      categoryProvider.reorderCategories(oldIndex, newIndex);
+                      categoryProvider.reorderCategories(oldIndex, newIndex, type: _selectedType);
                     },
                     itemBuilder: (ctx, index) {
                       final cat = categories[index];

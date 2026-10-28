@@ -633,13 +633,13 @@ class AccountsScreen extends StatelessWidget {
   Future<void> _settleCreditCard(
     BuildContext context,
     Account creditCardAccount,
-    int amountPaise,
+    int totalOutstandingPaise,
     String currency,
   ) async {
     final accountProvider = context.read<AccountProvider>();
     final accounts = accountProvider.accounts;
 
-    // Find Salary Account
+    // Find Salary Account (or fallback non-credit account)
     Account? salaryAcc;
     for (final a in accounts) {
       if (a.id != creditCardAccount.id && a.name.toLowerCase().contains('salary')) {
@@ -663,11 +663,174 @@ class AccountsScreen extends StatelessWidget {
       return;
     }
 
+    final double maxAmount = totalOutstandingPaise / 100.0;
+    final initialText = maxAmount % 1 == 0 ? maxAmount.toInt().toString() : maxAmount.toStringAsFixed(2);
+    final amountController = TextEditingController(text: initialText);
+    String? errorText;
+
+    final int? settleAmountPaise = await showDialog<int>(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) {
+            final theme = Theme.of(ctx);
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              title: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF59E0B).withValues(alpha: 0.15),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.credit_score_rounded, color: Color(0xFFF59E0B), size: 22),
+                  ),
+                  const SizedBox(width: 10),
+                  const Expanded(
+                    child: Text(
+                      'Settle Credit Card',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                    ),
+                  ),
+                ],
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Column(
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('Outstanding Dues:', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                            Text(
+                              CurrencyFormatter.formatPaise(totalOutstandingPaise, symbol: currency),
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFFF59E0B)),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('Pay From:', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                            Flexible(
+                              child: Text(
+                                salaryAcc!.name,
+                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Settlement Amount',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: theme.textTheme.bodySmall?.color,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  TextField(
+                    controller: amountController,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    autofocus: true,
+                    decoration: InputDecoration(
+                      prefixText: '$currency ',
+                      prefixStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                      hintText: '0.00',
+                      errorText: errorText,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    ),
+                    onChanged: (val) {
+                      if (errorText != null) {
+                        setDialogState(() {
+                          errorText = null;
+                        });
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton.icon(
+                      style: TextButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        padding: EdgeInsets.zero,
+                      ),
+                      onPressed: () {
+                        setDialogState(() {
+                          amountController.text = initialText;
+                          errorText = null;
+                        });
+                      },
+                      icon: const Icon(Icons.all_inclusive_rounded, size: 14),
+                      label: Text(
+                        'Full Amount ($currency$initialText)',
+                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, null),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFFF59E0B),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  onPressed: () {
+                    final raw = amountController.text.trim();
+                    final parsed = double.tryParse(raw);
+                    if (parsed == null || parsed <= 0) {
+                      setDialogState(() {
+                        errorText = 'Please enter a valid amount';
+                      });
+                      return;
+                    }
+                    final enteredPaise = (parsed * 100).round();
+                    if (enteredPaise > totalOutstandingPaise) {
+                      setDialogState(() {
+                        errorText = 'Exceeds dues (${CurrencyFormatter.formatPaise(totalOutstandingPaise, symbol: currency)})';
+                      });
+                      return;
+                    }
+                    Navigator.pop(ctx, enteredPaise);
+                  },
+                  child: const Text('Confirm Settle', style: TextStyle(fontWeight: FontWeight.bold)),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (settleAmountPaise == null || settleAmountPaise <= 0) return;
+
     HapticFeedback.mediumImpact();
     try {
       await accountProvider.settleCreditCard(
         creditCardAccount: creditCardAccount,
-        amountPaise: amountPaise,
+        amountPaise: settleAmountPaise,
         sourceAccount: salaryAcc,
       );
 
@@ -681,7 +844,7 @@ class AccountsScreen extends StatelessWidget {
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    'Credit card settled! ${CurrencyFormatter.formatPaise(amountPaise, symbol: currency)} deducted from ${salaryAcc.name}.',
+                    'Credit card settled! ${CurrencyFormatter.formatPaise(settleAmountPaise, symbol: currency)} deducted from ${salaryAcc.name}.',
                     style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
                 ),

@@ -3,6 +3,8 @@ import 'package:provider/provider.dart';
 
 import '../../models/income.dart';
 import '../../providers/account_provider.dart';
+import '../../providers/category_provider.dart';
+import '../../providers/reports_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../core/utils/date_formatter.dart';
 
@@ -32,6 +34,7 @@ class _AddEditIncomeScreenState extends State<AddEditIncomeScreen> {
   final FocusNode _amountFocusNode = FocusNode();
 
   int? _selectedAccountId;
+  int? _selectedCategoryId;
   DateTime _selectedDate = DateTime.now();
   bool _isSaving = false;
 
@@ -43,14 +46,25 @@ class _AddEditIncomeScreenState extends State<AddEditIncomeScreen> {
       _amountController.text = inc.amountDouble.toStringAsFixed(2);
       _noteController.text = inc.sourceOrNote ?? '';
       _selectedAccountId = inc.accountId;
+      _selectedCategoryId = inc.categoryId;
       _selectedDate = inc.date;
     } else {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         final accounts = context.read<AccountProvider>().accounts;
         final defaultAccount = context.read<AccountProvider>().defaultAccount;
+        final incomeCats = context.read<CategoryProvider>().incomeCategories;
         if (mounted) {
+          int? catId;
+          if (incomeCats.isNotEmpty) {
+            final salary = incomeCats.firstWhere(
+              (c) => c.name.toLowerCase() == 'salary',
+              orElse: () => incomeCats.first,
+            );
+            catId = salary.id;
+          }
           setState(() {
             _selectedAccountId = defaultAccount?.id ?? (accounts.isNotEmpty ? accounts.first.id : null);
+            _selectedCategoryId = catId;
           });
         }
       });
@@ -104,6 +118,7 @@ class _AddEditIncomeScreenState extends State<AddEditIncomeScreen> {
       id: widget.existingIncome?.id,
       amountMinorUnits: amountPaise,
       accountId: _selectedAccountId!,
+      categoryId: _selectedCategoryId,
       sourceOrNote: _noteController.text.trim(),
       date: _selectedDate,
       timeString: timeStr,
@@ -113,6 +128,9 @@ class _AddEditIncomeScreenState extends State<AddEditIncomeScreen> {
 
     try {
       final accountProvider = context.read<AccountProvider>();
+      final categoryProvider = context.read<CategoryProvider>();
+      final settings = context.read<SettingsProvider>();
+
       if (widget.existingIncome == null) {
         await accountProvider.addIncome(income);
       } else {
@@ -120,6 +138,13 @@ class _AddEditIncomeScreenState extends State<AddEditIncomeScreen> {
       }
 
       if (mounted) {
+        context.read<ReportsProvider>().loadReportSummary(
+          categories: categoryProvider.allCategories.isNotEmpty
+              ? categoryProvider.allCategories
+              : categoryProvider.categories,
+          currencySymbol: settings.currencySymbol,
+          showLoadingIndicator: false,
+        );
         Navigator.pop(context);
       }
     } catch (e) {
@@ -129,6 +154,68 @@ class _AddEditIncomeScreenState extends State<AddEditIncomeScreen> {
         setState(() {
           _isSaving = false;
         });
+      }
+    }
+  }
+
+  Future<void> _confirmDelete() async {
+    if (widget.existingIncome?.id == null) return;
+    final theme = Theme.of(context);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete Income Record?'),
+        content: const Text(
+          'This income transaction will be deleted and your live account balance will be updated automatically.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: theme.colorScheme.error),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      setState(() {
+        _isSaving = true;
+      });
+      try {
+        final accountProvider = context.read<AccountProvider>();
+        final categoryProvider = context.read<CategoryProvider>();
+        final settings = context.read<SettingsProvider>();
+
+        await accountProvider.deleteIncome(widget.existingIncome!.id!);
+
+        if (mounted) {
+          context.read<ReportsProvider>().loadReportSummary(
+            categories: categoryProvider.allCategories.isNotEmpty
+                ? categoryProvider.allCategories
+                : categoryProvider.categories,
+            currencySymbol: settings.currencySymbol,
+            showLoadingIndicator: false,
+          );
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Income record deleted successfully.')),
+          );
+          Navigator.pop(context);
+        }
+      } catch (e) {
+        if (mounted) {
+          _showSnackBar('Error deleting income: $e');
+        }
+      } finally {
+        if (mounted) {
+          setState(() {
+            _isSaving = false;
+          });
+        }
       }
     }
   }
@@ -158,10 +245,19 @@ class _AddEditIncomeScreenState extends State<AddEditIncomeScreen> {
     final theme = Theme.of(context);
     final settings = context.watch<SettingsProvider>();
     final accounts = context.watch<AccountProvider>().accounts;
+    final incomeCategories = context.watch<CategoryProvider>().incomeCategories;
 
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.existingIncome == null ? 'Add Income' : 'Edit Income'),
+        actions: [
+          if (widget.existingIncome != null)
+            IconButton(
+              icon: Icon(Icons.delete_outline, color: theme.colorScheme.error),
+              tooltip: 'Delete Income',
+              onPressed: _isSaving ? null : _confirmDelete,
+            ),
+        ],
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -242,6 +338,41 @@ class _AddEditIncomeScreenState extends State<AddEditIncomeScreen> {
               ),
               const SizedBox(height: 20),
 
+              // Income Category Dropdown
+              if (incomeCategories.isNotEmpty) ...[
+                DropdownButtonFormField<int>(
+                  initialValue: (_selectedCategoryId != null && incomeCategories.any((c) => c.id == _selectedCategoryId))
+                      ? _selectedCategoryId
+                      : incomeCategories.first.id,
+                  decoration: InputDecoration(
+                    labelText: 'Income Category',
+                    prefixIcon: const Icon(Icons.category_outlined),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+                  ),
+                  items: incomeCategories.map((cat) {
+                    final catColor = Color(cat.colorValue);
+                    return DropdownMenuItem<int>(
+                      value: cat.id,
+                      child: Row(
+                        children: [
+                          Icon(cat.iconData, size: 20, color: catColor),
+                          const SizedBox(width: 10),
+                          Text(cat.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                  onChanged: (val) {
+                    if (val != null) {
+                      setState(() {
+                        _selectedCategoryId = val;
+                      });
+                    }
+                  },
+                ),
+                const SizedBox(height: 20),
+              ],
+
               // Source / Description Input
               TextField(
                 controller: _noteController,
@@ -299,6 +430,28 @@ class _AddEditIncomeScreenState extends State<AddEditIncomeScreen> {
                         ),
                 ),
               ),
+
+              // Delete Button (when editing existing income)
+              if (widget.existingIncome != null) ...[
+                const SizedBox(height: 14),
+                SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: OutlinedButton.icon(
+                    onPressed: _isSaving ? null : _confirmDelete,
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: theme.colorScheme.error,
+                      side: BorderSide(color: theme.colorScheme.error.withValues(alpha: 0.5)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    ),
+                    icon: const Icon(Icons.delete_outline),
+                    label: const Text(
+                      'Delete Income',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
         ),

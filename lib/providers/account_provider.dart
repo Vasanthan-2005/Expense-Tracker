@@ -15,6 +15,15 @@ class AccountProvider with ChangeNotifier {
   /// Monthly balances keyed by [year][month] — loaded on demand
   Map<int, int> _monthlyAccountBalances = {};
 
+  /// Monthly added (inflow) balances for selected month
+  Map<int, int> _monthlyAddedBalances = {};
+
+  /// Overall cumulative added balances up to selected month
+  Map<int, int> _overallAddedBalances = {};
+
+  /// Historical closing balances for selected month
+  Map<int, int> _historicalClosingBalances = {};
+
   Account? _defaultAccount;
   List<Income> _recentIncomes = [];
   List<Transfer> _recentTransfers = [];
@@ -105,6 +114,39 @@ class AccountProvider with ChangeNotifier {
     return _monthlyAccountBalances[accountId] ?? 0;
   }
 
+  /// Returns the display balance for an account:
+  /// - In current month: returns the live remaining balance (inflow - outflow).
+  /// - In past months:
+  ///   - If account is in Monthly mode: returns the total balance added to that account in that month.
+  ///   - If account is in Overall mode: returns the overall balance added to that account up to that month.
+  ///   - Credit cards show credit to settle.
+  int getDisplayBalancePaise(Account account, {required bool isCurrentMonth}) {
+    if (account.isCreditCard) {
+      if (isCurrentMonth) {
+        return getAccountBalancePaise(account.id!);
+      }
+      return _historicalClosingBalances[account.id!] ?? getAccountBalancePaise(account.id!);
+    }
+    if (isCurrentMonth) {
+      return getAccountBalancePaise(account.id!);
+    }
+    if (account.balanceMode == AccountBalanceMode.monthly) {
+      return _monthlyAddedBalances[account.id!] ?? 0;
+    } else {
+      return _overallAddedBalances[account.id!] ?? (_overallAccountBalances[account.id!] ?? 0);
+    }
+  }
+
+  /// Returns total balance added (credited) to the account during the selected month
+  int getMonthlyAddedBalancePaise(int accountId) {
+    return _monthlyAddedBalances[accountId] ?? 0;
+  }
+
+  /// Returns overall cumulative balance added up to the selected month
+  int getOverallAddedBalancePaise(int accountId) {
+    return _overallAddedBalances[accountId] ?? 0;
+  }
+
   AccountProvider() {
     refreshAccounts();
   }
@@ -121,8 +163,17 @@ class AccountProvider with ChangeNotifier {
 
   Future<void> _refreshMonthlyBalances() async {
     try {
-      _monthlyAccountBalances = await DatabaseHelper.instance
-          .getAccountMonthlyBalances(_selectedBalanceYear, _selectedBalanceMonth);
+      final db = DatabaseHelper.instance;
+      final results = await Future.wait([
+        db.getAccountMonthlyBalances(_selectedBalanceYear, _selectedBalanceMonth),
+        db.getAccountMonthlyAddedBalances(_selectedBalanceYear, _selectedBalanceMonth),
+        db.getAccountCumulativeAddedBalances(_selectedBalanceYear, _selectedBalanceMonth),
+        db.getAccountClosingBalancesForMonth(_selectedBalanceYear, _selectedBalanceMonth),
+      ]);
+      _monthlyAccountBalances = results[0];
+      _monthlyAddedBalances = results[1];
+      _overallAddedBalances = results[2];
+      _historicalClosingBalances = results[3];
     } catch (e) {
       debugPrint('Error refreshing monthly balances: $e');
     }
@@ -201,6 +252,7 @@ class AccountProvider with ChangeNotifier {
       _defaultAccount = results[3] as Account?;
       _recentIncomes = results[4] as List<Income>;
       _recentTransfers = results[5] as List<Transfer>;
+      await _refreshMonthlyBalances();
       await refreshMonthlyIncomes();
     } catch (e) {
       debugPrint('Error refreshing accounts: $e');

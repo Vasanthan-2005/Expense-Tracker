@@ -331,7 +331,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   // balance mode (monthly vs overall) based on the account's setting
                   // and the currently selected balance month.
                   int getAccountBalance(Account acc) {
-                    return accountProvider.getAccountBalancePaise(acc.id!);
+                    return accountProvider.getDisplayBalancePaise(acc, isCurrentMonth: isCurrentMonth);
                   }
 
                   return Column(
@@ -349,6 +349,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 dashboardAccounts[0],
                                 getAccountBalance(dashboardAccounts[0]),
                                 currency,
+                                isCurrentMonth: isCurrentMonth,
                                 monthLabel: monthName,
                               ),
                             ),
@@ -367,6 +368,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                     dashboardAccounts[0],
                                     getAccountBalance(dashboardAccounts[0]),
                                     currency,
+                                    isCurrentMonth: isCurrentMonth,
                                     monthLabel: monthName,
                                   ),
                                 ),
@@ -377,6 +379,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                     dashboardAccounts[1],
                                     getAccountBalance(dashboardAccounts[1]),
                                     currency,
+                                    isCurrentMonth: isCurrentMonth,
                                     monthLabel: monthName,
                                   ),
                                 ),
@@ -398,6 +401,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                     getAccountBalance(dashboardAccounts[0]),
                                     currency,
                                     isCompact: true,
+                                    isCurrentMonth: isCurrentMonth,
                                     monthLabel: monthName,
                                   ),
                                 ),
@@ -409,6 +413,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                     getAccountBalance(dashboardAccounts[1]),
                                     currency,
                                     isCompact: true,
+                                    isCurrentMonth: isCurrentMonth,
                                     monthLabel: monthName,
                                   ),
                                 ),
@@ -708,6 +713,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     int balPaise,
     String currency, {
     bool isCompact = false,
+    bool isCurrentMonth = true,
     String? monthLabel,
   }) {
     final theme = Theme.of(context);
@@ -769,7 +775,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 child: Text(
                   acc.isCreditCard
                       ? 'Credit'
-                      : (isMonthly ? (monthLabel ?? 'Monthly') : 'Overall'),
+                      : (isCurrentMonth
+                          ? (isMonthly ? (monthLabel ?? 'Monthly') : 'Overall')
+                          : (isMonthly ? (monthLabel != null ? 'Added $monthLabel' : 'Added') : 'Total Added')),
                   style: TextStyle(
                     fontSize: 9.5,
                     fontWeight: FontWeight.bold,

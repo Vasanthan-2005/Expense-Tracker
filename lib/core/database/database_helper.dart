@@ -56,7 +56,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       dbPath,
-      version: 5,
+      version: 6,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
       onConfigure: (db) async {
@@ -77,7 +77,8 @@ class DatabaseHelper {
         is_default INTEGER NOT NULL DEFAULT 0,
         created_at INTEGER NOT NULL,
         monthly_budget INTEGER,
-        sort_order INTEGER NOT NULL DEFAULT 0
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        type TEXT NOT NULL DEFAULT 'expense'
       )
     ''');
 
@@ -121,12 +122,14 @@ class DatabaseHelper {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         amount INTEGER NOT NULL,
         account_id INTEGER NOT NULL,
+        category_id INTEGER,
         source_or_note TEXT,
         date TEXT NOT NULL,
         time TEXT NOT NULL,
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL,
-        FOREIGN KEY (account_id) REFERENCES accounts (id) ON DELETE RESTRICT
+        FOREIGN KEY (account_id) REFERENCES accounts (id) ON DELETE RESTRICT,
+        FOREIGN KEY (category_id) REFERENCES categories (id) ON DELETE RESTRICT
       )
     ''');
 
@@ -161,12 +164,17 @@ class DatabaseHelper {
     await db.execute('CREATE INDEX idx_expenses_account ON expenses(account_id)');
     await db.execute('CREATE INDEX idx_expenses_created_at ON expenses(created_at)');
     await db.execute('CREATE INDEX idx_incomes_account ON incomes(account_id)');
+    await db.execute('CREATE INDEX idx_incomes_category ON incomes(category_id)');
     await db.execute('CREATE INDEX idx_transfers_from_account ON transfers(from_account_id)');
     await db.execute('CREATE INDEX idx_transfers_to_account ON transfers(to_account_id)');
+    await db.execute('CREATE INDEX idx_transfers_date ON transfers(date)');
 
-    // Seed default categories
+    // Seed default categories (expense + income)
     final batch = db.batch();
     for (final cat in Category.defaultCategories) {
+      batch.insert('categories', cat.toMap());
+    }
+    for (final cat in Category.defaultIncomeCategories) {
       batch.insert('categories', cat.toMap());
     }
 
@@ -299,6 +307,43 @@ class DatabaseHelper {
       } catch (_) {}
       try {
         await db.execute("UPDATE accounts SET is_credit_card = 1 WHERE LOWER(name) LIKE '%credit card%'");
+      } catch (_) {}
+    }
+
+    if (oldVersion < 6) {
+      // 1. Add type column to categories table
+      try {
+        await db.execute("ALTER TABLE categories ADD COLUMN type TEXT NOT NULL DEFAULT 'expense'");
+      } catch (_) {}
+
+      // 2. Add category_id column to incomes table
+      try {
+        await db.execute("ALTER TABLE incomes ADD COLUMN category_id INTEGER REFERENCES categories(id)");
+      } catch (_) {}
+
+      // 3. Seed default income categories if not present
+      final existingIncome = await db.query('categories', where: "type = 'income'");
+      if (existingIncome.isEmpty) {
+        final batch = db.batch();
+        for (final cat in Category.defaultIncomeCategories) {
+          batch.insert('categories', cat.toMap());
+        }
+        await batch.commit(noResult: true);
+      }
+
+      // 4. Assign existing incomes with null category_id to 'Salary' category
+      try {
+        final salaryCat = await db.query('categories', where: "type = 'income' AND LOWER(name) = 'salary'", limit: 1);
+        if (salaryCat.isNotEmpty) {
+          final salaryId = salaryCat.first['id'] as int;
+          await db.update('incomes', {'category_id': salaryId}, where: 'category_id IS NULL');
+        }
+      } catch (_) {}
+
+      // 5. Create indexes
+      try {
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_incomes_category ON incomes(category_id)');
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_transfers_date ON transfers(date)');
       } catch (_) {}
     }
 
@@ -571,6 +616,62 @@ class DatabaseHelper {
     for (final row in res) {
       final id = row['id'] as int;
       final bal = (row['calculated_balance'] as int?) ?? 0;
+      balanceMap[id] = bal;
+    }
+    return balanceMap;
+  }
+
+  /// Calculates the total balance added (inflows: incomes + incoming transfers)
+  /// to each account during a specific month.
+  Future<Map<int, int>> getAccountMonthlyAddedBalances(int year, int month) async {
+    final db = await database;
+    final yearStr = year.toString().padLeft(4, '0');
+    final monthStr = month.toString().padLeft(2, '0');
+    final lastDay = DateTime(year, month + 1, 0).day.toString().padLeft(2, '0');
+    final startIso = '$yearStr-$monthStr-01';
+    final endIso = '$yearStr-$monthStr-$lastDay';
+
+    final res = await db.rawQuery('''
+      SELECT 
+        a.id,
+        COALESCE((SELECT SUM(amount) FROM incomes WHERE account_id = a.id AND date >= ? AND date <= ?), 0)
+        + COALESCE((SELECT SUM(amount) FROM transfers WHERE to_account_id = a.id AND date >= ? AND date <= ?), 0)
+        AS total_added
+      FROM accounts a
+    ''', [startIso, endIso, startIso, endIso]);
+
+    final Map<int, int> balanceMap = {};
+    for (final row in res) {
+      final id = row['id'] as int;
+      final bal = (row['total_added'] as int?) ?? 0;
+      balanceMap[id] = bal;
+    }
+    return balanceMap;
+  }
+
+  /// Calculates the cumulative overall balance added (opening_balance + all incomes + incoming transfers)
+  /// to each account up through the end of a specific month.
+  Future<Map<int, int>> getAccountCumulativeAddedBalances(int year, int month) async {
+    final db = await database;
+    final yearStr = year.toString().padLeft(4, '0');
+    final monthStr = month.toString().padLeft(2, '0');
+    final lastDay = DateTime(year, month + 1, 0).day.toString().padLeft(2, '0');
+    final endIso = '$yearStr-$monthStr-$lastDay';
+
+    final res = await db.rawQuery('''
+      SELECT 
+        a.id,
+        a.opening_balance
+        + COALESCE((SELECT SUM(amount) FROM incomes WHERE account_id = a.id AND date <= ?), 0)
+        + COALESCE((SELECT SUM(amount) FROM transfers WHERE to_account_id = a.id AND date <= ?), 0)
+        AS total_added
+      FROM accounts a
+    ''', [endIso, endIso]);
+
+    final Map<int, int> balanceMap = {};
+    for (final row in res) {
+      final id = row['id'] as int;
+      final bal = (row['total_added'] as int?) ?? 0;
       balanceMap[id] = bal;
     }
     return balanceMap;
@@ -1096,15 +1197,25 @@ class DatabaseHelper {
 
   // --- CATEGORIES CRUD ---
 
-  Future<List<Category>> getCategories() async {
+  Future<List<Category>> getCategories({String? type}) async {
     final db = await database;
-    final maps = await db.query('categories', orderBy: 'sort_order ASC, id ASC');
+    final where = type != null ? 'type = ?' : null;
+    final whereArgs = type != null ? [type] : null;
+    final maps = await db.query(
+      'categories',
+      where: where,
+      whereArgs: whereArgs,
+      orderBy: 'sort_order ASC, id ASC',
+    );
     return maps.map((m) => Category.fromMap(m)).toList();
   }
 
   Future<int> insertCategory(Category category) async {
     final db = await database;
-    final maxRes = await db.rawQuery('SELECT MAX(sort_order) as max_order FROM categories');
+    final maxRes = await db.rawQuery(
+      'SELECT MAX(sort_order) as max_order FROM categories WHERE type = ?',
+      [category.type],
+    );
     int nextSortOrder = 0;
     if (maxRes.isNotEmpty && maxRes.first['max_order'] != null) {
       nextSortOrder = (maxRes.first['max_order'] as int) + 1;
@@ -1195,31 +1306,45 @@ class DatabaseHelper {
   Future<void> deleteCategory(int categoryId, {int? fallbackCategoryId}) async {
     final db = await database;
     await db.transaction((txn) async {
-      // Find fallback category (e.g. 'Other' or remaining category) if not provided
+      // Find category to know its type
+      final catRes = await txn.query('categories', where: 'id = ?', whereArgs: [categoryId]);
+      final catType = catRes.isNotEmpty ? ((catRes.first['type'] as String?) ?? 'expense') : 'expense';
+
+      // Find fallback category of the SAME type
       int targetFallbackId;
       if (fallbackCategoryId != null && fallbackCategoryId != categoryId) {
         targetFallbackId = fallbackCategoryId;
       } else {
-        final otherRes = await txn.query('categories', where: 'name = ? AND id != ?', whereArgs: ['Other', categoryId], limit: 1);
+        final otherRes = await txn.query(
+          'categories',
+          where: 'type = ? AND id != ?',
+          whereArgs: [catType, categoryId],
+          orderBy: 'id ASC',
+          limit: 1,
+        );
         if (otherRes.isNotEmpty) {
           targetFallbackId = otherRes.first['id'] as int;
         } else {
-          // If no 'Other', pick any remaining category
-          final anyRes = await txn.query('categories', where: 'id != ?', whereArgs: [categoryId], limit: 1);
-          if (anyRes.isEmpty) {
-            throw Exception('Cannot delete the last remaining category');
-          }
-          targetFallbackId = anyRes.first['id'] as int;
+          throw Exception('Cannot delete the last remaining $catType category');
         }
       }
 
-      // Reassign expenses using deleted category to fallback
-      await txn.update(
-        'expenses',
-        {'category_id': targetFallbackId},
-        where: 'category_id = ?',
-        whereArgs: [categoryId],
-      );
+      // Reassign records using deleted category to fallback
+      if (catType == 'expense') {
+        await txn.update(
+          'expenses',
+          {'category_id': targetFallbackId},
+          where: 'category_id = ?',
+          whereArgs: [categoryId],
+        );
+      } else {
+        await txn.update(
+          'incomes',
+          {'category_id': targetFallbackId},
+          where: 'category_id = ?',
+          whereArgs: [categoryId],
+        );
+      }
 
       // Delete the category
       await txn.delete(
@@ -1253,6 +1378,18 @@ class DatabaseHelper {
             await db.delete('categories', where: 'id = ?', whereArgs: [catId]);
           }
         }
+      }
+    }
+
+    // Ensure default income categories exist
+    for (final defInc in Category.defaultIncomeCategories) {
+      final res = await db.query(
+        'categories',
+        where: "type = 'income' AND LOWER(name) = ?",
+        whereArgs: [defInc.name.toLowerCase()],
+      );
+      if (res.isEmpty) {
+        await db.insert('categories', defInc.toMap());
       }
     }
 
@@ -1371,6 +1508,63 @@ class DatabaseHelper {
     );
     final val = result.first['total'];
     return (val as int?) ?? 0;
+  }
+
+  Future<Map<int, int>> getIncomeCategoryTotalsForDateRange(String startIso, String endIso) async {
+    final db = await database;
+    final res = await db.rawQuery('''
+      SELECT COALESCE(category_id, 0) as cat_id, SUM(amount) as total 
+      FROM incomes 
+      WHERE date >= ? AND date <= ?
+      GROUP BY cat_id
+    ''', [startIso, endIso]);
+
+    final Map<int, int> map = {};
+    for (final row in res) {
+      final catId = row['cat_id'] as int;
+      final total = (row['total'] as int?) ?? 0;
+      map[catId] = total;
+    }
+    return map;
+  }
+
+  Future<List<Income>> getIncomesByCategory({
+    int? categoryId,
+    required DateTime startDate,
+    required DateTime endDate,
+  }) async {
+    final db = await database;
+    final startIso = "${startDate.year.toString().padLeft(4, '0')}-${startDate.month.toString().padLeft(2, '0')}-${startDate.day.toString().padLeft(2, '0')}";
+    final endIso = "${endDate.year.toString().padLeft(4, '0')}-${endDate.month.toString().padLeft(2, '0')}-${endDate.day.toString().padLeft(2, '0')}";
+
+    final String where;
+    final List<dynamic> whereArgs;
+    if (categoryId != null && categoryId > 0) {
+      where = 'category_id = ? AND date >= ? AND date <= ?';
+      whereArgs = [categoryId, startIso, endIso];
+    } else {
+      where = '(category_id IS NULL OR category_id = 0) AND date >= ? AND date <= ?';
+      whereArgs = [startIso, endIso];
+    }
+
+    final maps = await db.query(
+      'incomes',
+      where: where,
+      whereArgs: whereArgs,
+      orderBy: 'date DESC, time DESC, id DESC',
+    );
+    return maps.map((m) => Income.fromMap(m)).toList();
+  }
+
+  Future<List<Transfer>> getTransfersForDateRange(String startIso, String endIso) async {
+    final db = await database;
+    final maps = await db.query(
+      'transfers',
+      where: 'date >= ? AND date <= ?',
+      whereArgs: [startIso, endIso],
+      orderBy: 'date DESC, time DESC, id DESC',
+    );
+    return maps.map((m) => Transfer.fromMap(m)).toList();
   }
 
   Future<List<int>> getAvailableYears() async {

@@ -7,8 +7,36 @@ import '../../core/utils/currency_formatter.dart';
 import '../../models/category.dart';
 import 'category_form_dialog.dart';
 
-class CategoriesScreen extends StatelessWidget {
-  const CategoriesScreen({super.key});
+class CategoriesScreen extends StatefulWidget {
+  final int initialTabIndex;
+
+  const CategoriesScreen({super.key, this.initialTabIndex = 0});
+
+  @override
+  State<CategoriesScreen> createState() => _CategoriesScreenState();
+}
+
+class _CategoriesScreenState extends State<CategoriesScreen> with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(
+      length: 2,
+      vsync: this,
+      initialIndex: widget.initialTabIndex.clamp(0, 1),
+    );
+    _tabController.addListener(() {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
 
   void _showOverallBudgetDialog(BuildContext context) {
     final settingsProvider = context.read<SettingsProvider>();
@@ -180,13 +208,16 @@ class CategoriesScreen extends StatelessWidget {
   Future<void> _confirmDeleteCategory(BuildContext context, Category category) async {
     final theme = Theme.of(context);
     final categoryProvider = context.read<CategoryProvider>();
+    final isIncome = category.type == 'income';
 
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('Delete "${category.name}"?'),
-        content: const Text(
-          'Any existing expenses assigned to this category will automatically be reassigned to another remaining category to preserve your history.',
+        content: Text(
+          isIncome
+              ? 'Any existing incomes assigned to this category will automatically be reassigned to another remaining income category.'
+              : 'Any existing expenses assigned to this category will automatically be reassigned to another remaining category to preserve your history.',
         ),
         actions: [
           TextButton(
@@ -207,187 +238,343 @@ class CategoriesScreen extends StatelessWidget {
     }
   }
 
+  void _openAddCategory(BuildContext context) {
+    final isIncomeTab = _tabController.index == 1;
+    CategoryFormDialog.show(
+      context,
+      categoryType: isIncomeTab ? 'income' : 'expense',
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final categoryProvider = context.watch<CategoryProvider>();
     final settings = context.watch<SettingsProvider>();
-    final categories = categoryProvider.categories;
+    final expenseCategories = categoryProvider.expenseCategories;
+    final incomeCategories = categoryProvider.incomeCategories;
     final currency = settings.currencySymbol;
+    final isIncomeTab = _tabController.index == 1;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Manage Categories & Budgets'),
+        title: const Text('Manage Categories'),
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: const [
+            Tab(
+              icon: Icon(Icons.arrow_upward_rounded, size: 18),
+              text: 'Expense Categories',
+            ),
+            Tab(
+              icon: Icon(Icons.arrow_downward_rounded, size: 18),
+              text: 'Income Categories',
+            ),
+          ],
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.add),
-            tooltip: 'Add Custom Category',
-            onPressed: () => CategoryFormDialog.show(context),
+            tooltip: isIncomeTab ? 'Add Income Category' : 'Add Expense Category',
+            onPressed: () => _openAddCategory(context),
           ),
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => CategoryFormDialog.show(context),
+        onPressed: () => _openAddCategory(context),
         icon: const Icon(Icons.add),
-        label: const Text('Add Category'),
+        label: Text(isIncomeTab ? 'Add Income Category' : 'Add Expense Category'),
       ),
       body: categoryProvider.isLoading
           ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              padding: const EdgeInsets.only(bottom: 80),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Overall Monthly Budget Hero Card
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-                    child: Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            const Color(0xFF10B981).withValues(alpha: 0.15),
-                            const Color(0xFF059669).withValues(alpha: 0.05),
-                          ],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: const Color(0xFF10B981).withValues(alpha: 0.4),
-                          width: 1.5,
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF10B981).withValues(alpha: 0.2),
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                            child: const Icon(Icons.savings_outlined, color: Color(0xFF10B981), size: 28),
-                          ),
-                          const SizedBox(width: 14),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  'Overall Monthly Budget',
-                                  style: TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.bold),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  settings.isOverallBudgetSet
-                                      ? CurrencyFormatter.formatPaise(settings.overallMonthlyBudgetPaise!, symbol: currency)
-                                      : 'No Global Budget Set',
-                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-                                ),
+          : TabBarView(
+              controller: _tabController,
+              children: [
+                // TAB 1: EXPENSE CATEGORIES
+                SingleChildScrollView(
+                  padding: const EdgeInsets.only(bottom: 90),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Overall Monthly Budget Hero Card
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [
+                                const Color(0xFF10B981).withValues(alpha: 0.15),
+                                const Color(0xFF059669).withValues(alpha: 0.05),
                               ],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: const Color(0xFF10B981).withValues(alpha: 0.4),
+                              width: 1.5,
                             ),
                           ),
-                          FilledButton(
-                            onPressed: () => _showOverallBudgetDialog(context),
-                            style: FilledButton.styleFrom(
-                              backgroundColor: const Color(0xFF10B981),
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                            ),
-                            child: Text(
-                              settings.isOverallBudgetSet ? 'Edit' : '+ Set Budget',
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.white),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-
-                  // Section Title
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 6),
-                    child: Text(
-                      'CATEGORY BUDGET LIMITS',
-                      style: theme.textTheme.labelMedium?.copyWith(
-                        color: theme.colorScheme.primary,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 1.2,
-                      ),
-                    ),
-                  ),
-
-                  ListView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: categories.length,
-                    itemBuilder: (ctx, idx) {
-                      final cat = categories[idx];
-                      final color = Color(cat.colorValue);
-                      final isBudgetSet = cat.isBudgetSet;
-                      final budgetStr = cat.monthlyBudgetDouble.toStringAsFixed(0);
-
-                      return Card(
-                        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                        child: ListTile(
-                          leading: Container(
-                            width: 42,
-                            height: 42,
-                            decoration: BoxDecoration(
-                              color: color.withValues(alpha: 0.15),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Icon(cat.iconData, color: color, size: 20),
-                          ),
-                          title: Text(
-                            cat.name,
-                            style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-                          ),
-                          subtitle: Text(
-                            isBudgetSet
-                                ? 'Limit: $currency$budgetStr / month'
-                                : 'Limit: $currency 0 (No limit set)',
-                            style: theme.textTheme.bodySmall?.copyWith(fontSize: 12),
-                          ),
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
+                          child: Row(
                             children: [
-                              IconButton(
-                                icon: Icon(
-                                  isBudgetSet ? Icons.account_balance_wallet : Icons.account_balance_wallet_outlined,
-                                  size: 20,
-                                  color: isBudgetSet ? theme.colorScheme.primary : null,
+                              Container(
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF10B981).withValues(alpha: 0.2),
+                                  borderRadius: BorderRadius.circular(14),
                                 ),
-                                tooltip: 'Edit Budget Limit',
-                                onPressed: () => _showEditBudgetDialog(context, cat),
+                                child: const Icon(Icons.savings_outlined, color: Color(0xFF10B981), size: 28),
                               ),
-                              IconButton(
-                                icon: const Icon(Icons.edit_outlined, size: 20),
-                                tooltip: 'Edit Category',
-                                onPressed: () => CategoryFormDialog.show(context, existingCategory: cat),
+                              const SizedBox(width: 14),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text(
+                                      'Overall Monthly Budget',
+                                      style: TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.bold),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      settings.isOverallBudgetSet
+                                          ? CurrencyFormatter.formatPaise(settings.overallMonthlyBudgetPaise!, symbol: currency)
+                                          : 'No Global Budget Set',
+                                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                                    ),
+                                  ],
+                                ),
                               ),
-                              IconButton(
-                                icon: Icon(Icons.delete_outline, size: 20, color: theme.colorScheme.error),
-                                tooltip: 'Delete Category',
-                                onPressed: () {
-                                  if (categories.length <= 1) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(content: Text('Cannot delete the last remaining category.')),
-                                    );
-                                    return;
-                                  }
-                                  _confirmDeleteCategory(context, cat);
-                                },
+                              FilledButton(
+                                onPressed: () => _showOverallBudgetDialog(context),
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: const Color(0xFF10B981),
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                ),
+                                child: Text(
+                                  settings.isOverallBudgetSet ? 'Edit' : '+ Set Budget',
+                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.white),
+                                ),
                               ),
                             ],
                           ),
                         ),
-                      );
-                    },
+                      ),
+
+                      // Section Title
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 12, 20, 6),
+                        child: Text(
+                          'CATEGORY BUDGET LIMITS (${expenseCategories.length})',
+                          style: theme.textTheme.labelMedium?.copyWith(
+                            color: theme.colorScheme.primary,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 1.2,
+                          ),
+                        ),
+                      ),
+
+                      ListView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: expenseCategories.length,
+                        itemBuilder: (ctx, idx) {
+                          final cat = expenseCategories[idx];
+                          final color = Color(cat.colorValue);
+                          final isBudgetSet = cat.isBudgetSet;
+                          final budgetStr = cat.monthlyBudgetDouble.toStringAsFixed(0);
+
+                          return Card(
+                            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                            child: ListTile(
+                              leading: Container(
+                                width: 42,
+                                height: 42,
+                                decoration: BoxDecoration(
+                                  color: color.withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Icon(cat.iconData, color: color, size: 20),
+                              ),
+                              title: Text(
+                                cat.name,
+                                style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                              ),
+                              subtitle: Text(
+                                isBudgetSet
+                                    ? 'Limit: $currency$budgetStr / month'
+                                    : 'Limit: $currency 0 (No limit set)',
+                                style: theme.textTheme.bodySmall?.copyWith(fontSize: 12),
+                              ),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                    icon: Icon(
+                                      isBudgetSet ? Icons.account_balance_wallet : Icons.account_balance_wallet_outlined,
+                                      size: 20,
+                                      color: isBudgetSet ? theme.colorScheme.primary : null,
+                                    ),
+                                    tooltip: 'Edit Budget Limit',
+                                    onPressed: () => _showEditBudgetDialog(context, cat),
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.edit_outlined, size: 20),
+                                    tooltip: 'Edit Category',
+                                    onPressed: () => CategoryFormDialog.show(context, existingCategory: cat, categoryType: 'expense'),
+                                  ),
+                                  IconButton(
+                                    icon: Icon(Icons.delete_outline, size: 20, color: theme.colorScheme.error),
+                                    tooltip: 'Delete Category',
+                                    onPressed: () {
+                                      if (expenseCategories.length <= 1) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(content: Text('Cannot delete the last remaining expense category.')),
+                                        );
+                                        return;
+                                      }
+                                      _confirmDeleteCategory(context, cat);
+                                    },
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+
+                // TAB 2: INCOME CATEGORIES
+                SingleChildScrollView(
+                  padding: const EdgeInsets.only(bottom: 90),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Income Categories Banner
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF10B981).withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: const Color(0xFF10B981).withValues(alpha: 0.3),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF10B981).withValues(alpha: 0.2),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: const Icon(Icons.account_balance_wallet, color: Color(0xFF10B981), size: 24),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text(
+                                      'Income Categories',
+                                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      'Categorize income by Salary, Jman Claim, Rapido, etc. when adding or editing incomes.',
+                                      style: theme.textTheme.bodySmall?.copyWith(height: 1.3),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+
+                      // Section Title
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 12, 20, 6),
+                        child: Text(
+                          'INCOME CATEGORIES (${incomeCategories.length})',
+                          style: theme.textTheme.labelMedium?.copyWith(
+                            color: const Color(0xFF10B981),
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 1.2,
+                          ),
+                        ),
+                      ),
+
+                      ListView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: incomeCategories.length,
+                        itemBuilder: (ctx, idx) {
+                          final cat = incomeCategories[idx];
+                          final color = Color(cat.colorValue);
+
+                          return Card(
+                            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                            child: ListTile(
+                              leading: Container(
+                                width: 42,
+                                height: 42,
+                                decoration: BoxDecoration(
+                                  color: color.withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Icon(cat.iconData, color: color, size: 20),
+                              ),
+                              title: Text(
+                                cat.name,
+                                style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                              ),
+                              subtitle: Text(
+                                cat.isDefault ? 'Default category' : 'Custom category',
+                                style: theme.textTheme.bodySmall?.copyWith(fontSize: 12),
+                              ),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                    icon: const Icon(Icons.edit_outlined, size: 20),
+                                    tooltip: 'Edit Category',
+                                    onPressed: () => CategoryFormDialog.show(
+                                      context,
+                                      existingCategory: cat,
+                                      categoryType: 'income',
+                                    ),
+                                  ),
+                                  IconButton(
+                                    icon: Icon(Icons.delete_outline, size: 20, color: theme.colorScheme.error),
+                                    tooltip: 'Delete Category',
+                                    onPressed: () {
+                                      if (incomeCategories.length <= 1) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(content: Text('Cannot delete the last remaining income category.')),
+                                        );
+                                        return;
+                                      }
+                                      _confirmDeleteCategory(context, cat);
+                                    },
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
     );
   }

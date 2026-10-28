@@ -1,8 +1,10 @@
 import 'package:flutter/foundation.dart' hide Category;
+import 'package:flutter/material.dart' show Icons;
 import 'package:intl/intl.dart';
 
 import '../models/category.dart';
 import '../models/report_summary.dart';
+import '../models/transfer.dart';
 import '../core/database/database_helper.dart';
 import '../services/insights_service.dart';
 
@@ -207,6 +209,8 @@ class ReportsProvider with ChangeNotifier {
         db.getHighestSingleExpense(startIso, endIso),
         db.getTotalIncomePaiseForDateRange(startIso, endIso),
         db.getAvailableYears(),
+        db.getIncomeCategoryTotalsForDateRange(startIso, endIso),
+        db.getTransfersForDateRange(startIso, endIso),
       ]);
 
       final todayTotal = results[0] as int;
@@ -218,13 +222,15 @@ class ReportsProvider with ChangeNotifier {
       final highestMap = results[6] as Map<String, dynamic>?;
       final totalIncomePaise = results[7] as int;
       final yearsList = results[8] as List<int>;
+      final incomeCategoryTotals = results[9] as Map<int, int>;
+      final periodTransfers = results[10] as List<Transfer>;
 
       _availableYears = yearsList.isNotEmpty ? yearsList : [DateTime.now().year];
       if (!_availableYears.contains(_selectedYear)) {
         _selectedYear = _availableYears.first;
       }
 
-      // 1. Calculate Category Breakdown
+      // 1. Calculate Expense Category Breakdown
       final List<CategorySpend> categoryBreakdown = [];
       categoryTotals.forEach((catId, total) {
         final cat = catMap[catId];
@@ -244,7 +250,42 @@ class ReportsProvider with ChangeNotifier {
       });
       categoryBreakdown.sort((a, b) => b.totalMinorUnits.compareTo(a.totalMinorUnits));
 
-      // 2. Calculate Daily Trends for Line Chart
+      // 2. Calculate Income Category Breakdown
+      final List<CategorySpend> incomeCategoryBreakdown = [];
+      incomeCategoryTotals.forEach((catId, total) {
+        final cat = catMap[catId];
+        if (cat != null) {
+          final pct = totalIncomePaise > 0 ? (total / totalIncomePaise.toDouble()) * 100 : 0.0;
+          incomeCategoryBreakdown.add(CategorySpend(
+            categoryId: catId,
+            categoryName: cat.name,
+            colorValue: cat.colorValue,
+            iconCodePoint: cat.iconCodePoint,
+            iconFontFamily: cat.iconFontFamily,
+            totalMinorUnits: total,
+            percentage: pct,
+            expenseCount: 0,
+          ));
+        } else if (catId == 0 && total > 0) {
+          final pct = totalIncomePaise > 0 ? (total / totalIncomePaise.toDouble()) * 100 : 0.0;
+          incomeCategoryBreakdown.add(CategorySpend(
+            categoryId: 0,
+            categoryName: 'Other / Direct',
+            colorValue: 0xFF64748B,
+            iconCodePoint: Icons.more_horiz.codePoint,
+            iconFontFamily: 'MaterialIcons',
+            totalMinorUnits: total,
+            percentage: pct,
+            expenseCount: 0,
+          ));
+        }
+      });
+      incomeCategoryBreakdown.sort((a, b) => b.totalMinorUnits.compareTo(a.totalMinorUnits));
+
+      // 3. Calculate Transfer Totals
+      final int totalTransferPaise = periodTransfers.fold<int>(0, (sum, t) => sum + t.amountMinorUnits);
+
+      // 4. Calculate Daily Trends for Line Chart
       final Map<String, int> dailySpendMap = {};
       for (final row in dailySpendRows) {
         dailySpendMap[row['date'] as String] = (row['total'] as int?) ?? 0;
@@ -261,14 +302,14 @@ class ReportsProvider with ChangeNotifier {
         trends.add(TrendDataPoint(date: date, label: label, totalMinorUnits: total));
       }
 
-      // 3. Highest expense
+      // 5. Highest expense
       final highestAmount = (highestMap?['amount'] as int?) ?? 0;
       final highestNote = highestMap?['note'] as String?;
 
-      // 4. Daily average
+      // 6. Daily average
       final dailyAvg = durationDays > 0 ? periodTotal / durationDays.toDouble() : 0.0;
 
-      // 5. Generate Offline Insights
+      // 7. Generate Offline Insights
       final insights = InsightsService.generateInsights(
         weekTotalMinor: periodTotal,
         previousWeekTotalMinor: prevPeriodTotal,
@@ -295,6 +336,10 @@ class ReportsProvider with ChangeNotifier {
         insights: insights,
         totalIncomeMinor: totalIncomePaise,
         totalExpenseMinor: periodTotal,
+        incomeCategoryBreakdown: incomeCategoryBreakdown,
+        periodTransfers: periodTransfers,
+        totalTransferMinor: totalTransferPaise,
+        transferCount: periodTransfers.length,
       );
     } catch (e) {
       debugPrint('Error generating report summary: $e');

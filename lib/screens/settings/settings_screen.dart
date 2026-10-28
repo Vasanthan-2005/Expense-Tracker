@@ -1341,14 +1341,29 @@ class _SettingsScreenState extends State<SettingsScreen>
             _ModernCard(
               children: [
                 _ModernTile(
-                  icon: Icons.category_outlined,
-                  iconColor: const Color(0xFF8B5CF6),
-                  title: 'Manage Categories',
+                  icon: Icons.shopping_bag_outlined,
+                  iconColor: const Color(0xFFEF4444),
+                  title: 'Expense Categories',
+                  subtitle: 'Spending limits & expense categories',
                   trailing: const Icon(Icons.chevron_right, size: 18, color: Colors.grey),
                   onTap: () {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (ctx) => const CategoriesScreen()),
+                      MaterialPageRoute(builder: (ctx) => const CategoriesScreen(initialTabIndex: 0)),
+                    );
+                  },
+                ),
+                const Divider(height: 1),
+                _ModernTile(
+                  icon: Icons.account_balance_wallet_outlined,
+                  iconColor: const Color(0xFF10B981),
+                  title: 'Income Categories',
+                  subtitle: 'Salary, Jman Claim, Rapido & custom categories',
+                  trailing: const Icon(Icons.chevron_right, size: 18, color: Colors.grey),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (ctx) => const CategoriesScreen(initialTabIndex: 1)),
                     );
                   },
                 ),

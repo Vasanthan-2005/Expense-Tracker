@@ -1,9 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
-import 'package:expense_tracker/models/category.dart';
 import 'package:expense_tracker/models/expense.dart';
-import 'package:expense_tracker/models/account.dart';
 import 'package:expense_tracker/models/income.dart';
 import 'package:expense_tracker/core/database/database_helper.dart';
 import 'package:expense_tracker/providers/account_provider.dart';
@@ -200,6 +198,62 @@ void main() {
       expect(provider.totalNetWorthPaise, equals(5500000));
       expect(provider.getAccountBalancePaise(salaryAcc.id!), equals(5500000));
       expect(provider.getAccountBalancePaise(cc.id!), equals(0));
+    });
+
+    test('5. Partial credit card settlement with custom amountPaise leaves remaining dues', () async {
+      final accounts = await dbHelper.getAccounts();
+      final cc = accounts.firstWhere((a) => a.isCreditCard);
+      final salaryAcc = accounts.firstWhere((a) => a.name.toLowerCase().contains('salary'));
+      final categories = await dbHelper.getCategories();
+      final foodCat = categories.first;
+
+      final now = DateTime.now();
+
+      // Salary income: ₹40,000 (4,000,000 paise)
+      await dbHelper.insertIncome(Income(
+        amountMinorUnits: 4000000,
+        accountId: salaryAcc.id!,
+        sourceOrNote: 'Salary',
+        date: now,
+        timeString: '09:00',
+        createdAt: now,
+        updatedAt: now,
+      ));
+
+      // Credit card expense: ₹10,000 (1,000,000 paise)
+      await dbHelper.insertExpense(Expense(
+        amountMinorUnits: 1000000,
+        categoryId: foodCat.id!,
+        accountId: cc.id!,
+        note: 'Flight tickets',
+        date: now,
+        timeString: '10:00',
+        createdAt: now,
+        updatedAt: now,
+      ));
+
+      final provider = AccountProvider();
+      await provider.refreshAccounts();
+
+      expect(provider.getAccountBalancePaise(cc.id!), equals(1000000));
+      expect(provider.getAccountBalancePaise(salaryAcc.id!), equals(4000000));
+
+      // User partially settles ₹4,000 (400,000 paise) instead of full ₹10,000
+      await provider.settleCreditCard(
+        creditCardAccount: cc,
+        amountPaise: 400000,
+      );
+
+      // Remaining credit card dues: 1,000,000 - 400,000 = 600,000 (₹6,000)
+      expect(provider.getAccountBalancePaise(cc.id!), equals(600000));
+
+      // Salary account reduced by exactly ₹4,000: 4,000,000 - 400,000 = 3,600,000 (₹36,000)
+      expect(provider.getAccountBalancePaise(salaryAcc.id!), equals(3600000));
+
+      // DB check
+      final balances = await dbHelper.getAccountCalculatedBalances();
+      expect(balances[cc.id], equals(600000));
+      expect(balances[salaryAcc.id], equals(3600000));
     });
   });
 }

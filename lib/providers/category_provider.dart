@@ -22,7 +22,18 @@ class CategoryProvider with ChangeNotifier {
     }
   }
 
-  List<Category> get categories => List.unmodifiable(_categories);
+  /// All categories across both expense and income
+  List<Category> get allCategories => List.unmodifiable(_categories);
+
+  /// Default categories getter returns expense categories for backward compatibility
+  List<Category> get categories => List.unmodifiable(_categories.where((c) => c.type == 'expense').toList());
+
+  /// Explicit expense categories getter
+  List<Category> get expenseCategories => categories;
+
+  /// Income categories getter
+  List<Category> get incomeCategories => List.unmodifiable(_categories.where((c) => c.type == 'income').toList());
+
   Map<int, int> get categorySpentMap => Map.unmodifiable(_categorySpentMap);
   bool get isLoading => _isLoading;
 
@@ -84,15 +95,22 @@ class CategoryProvider with ChangeNotifier {
     await loadCategories();
   }
 
-  Future<void> reorderCategories(int oldIndex, int newIndex) async {
+  Future<void> reorderCategories(int oldIndex, int newIndex, {String type = 'expense'}) async {
     if (oldIndex == newIndex) return;
 
-    final item = _categories.removeAt(oldIndex);
-    _categories.insert(newIndex, item);
+    final targetList = _categories.where((c) => c.type == type).toList();
+    if (oldIndex >= targetList.length || newIndex >= targetList.length) return;
+
+    final item = targetList.removeAt(oldIndex);
+    targetList.insert(newIndex, item);
+
+    // Reconstruct full list preserving other type's items
+    final otherList = _categories.where((c) => c.type != type).toList();
+    _categories = [...targetList, ...otherList];
     notifyListeners();
 
     try {
-      await DatabaseHelper.instance.updateCategoryOrder(_categories);
+      await DatabaseHelper.instance.updateCategoryOrder(targetList);
     } catch (e) {
       debugPrint('Error updating category order: $e');
       await loadCategories();
