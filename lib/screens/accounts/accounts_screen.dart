@@ -3,10 +3,14 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../models/account.dart';
+import '../../models/category.dart';
 import '../../models/income.dart';
 import '../../models/transfer.dart';
 import '../../providers/account_provider.dart';
+import '../../providers/category_provider.dart';
+import '../../providers/reports_provider.dart';
 import '../../providers/settings_provider.dart';
+import '../../core/database/database_helper.dart';
 import '../../core/utils/currency_formatter.dart';
 import 'add_edit_account_modal.dart';
 import '../income/add_edit_income_modal.dart';
@@ -498,9 +502,43 @@ class AccountsScreen extends StatelessWidget {
   ) async {
     HapticFeedback.lightImpact();
     final now = DateTime.now();
+
+    final categoryProvider = context.read<CategoryProvider>();
+    int? salaryCatId;
+    final match = categoryProvider.incomeCategories.cast<Category?>().firstWhere(
+      (c) => c?.name.toLowerCase() == 'salary',
+      orElse: () => null,
+    );
+    salaryCatId = match?.id;
+
+    if (salaryCatId == null) {
+      final db = DatabaseHelper.instance;
+      final incomeCats = await db.getCategories(type: 'income');
+      final dbMatch = incomeCats.cast<Category?>().firstWhere(
+        (c) => c?.name.toLowerCase() == 'salary',
+        orElse: () => incomeCats.isNotEmpty ? incomeCats.first : null,
+      );
+      if (dbMatch != null) {
+        salaryCatId = dbMatch.id;
+      } else {
+        final newSalaryCat = Category(
+          name: 'Salary',
+          iconCodePoint: Icons.payments.codePoint,
+          colorValue: 0xFF10B981,
+          isDefault: true,
+          createdAt: now,
+          sortOrder: 0,
+          type: 'income',
+        );
+        salaryCatId = await db.insertCategory(newSalaryCat);
+        await categoryProvider.loadCategories();
+      }
+    }
+
     final income = Income(
       amountMinorUnits: amountPaise,
       accountId: account.id!,
+      categoryId: salaryCatId,
       sourceOrNote: 'Salary',
       date: DateTime(now.year, now.month, now.day),
       timeString: '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}',
@@ -509,6 +547,16 @@ class AccountsScreen extends StatelessWidget {
     );
     await context.read<AccountProvider>().addIncome(income);
     if (context.mounted) {
+      final catProv = context.read<CategoryProvider>();
+      final settings = context.read<SettingsProvider>();
+      context.read<ReportsProvider>().loadReportSummary(
+        categories: catProv.allCategories.isNotEmpty
+            ? catProv.allCategories
+            : catProv.categories,
+        currencySymbol: settings.currencySymbol,
+        showLoadingIndicator: false,
+      );
+
       ScaffoldMessenger.of(context).hideCurrentSnackBar();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -594,9 +642,15 @@ class AccountsScreen extends StatelessWidget {
         );
       }
     } else {
+      final categoryProvider = context.read<CategoryProvider>();
+      int? defaultCatId;
+      if (categoryProvider.incomeCategories.isNotEmpty) {
+        defaultCatId = categoryProvider.incomeCategories.first.id;
+      }
       final income = Income(
         amountMinorUnits: amountPaise,
         accountId: account.id!,
+        categoryId: defaultCatId,
         sourceOrNote: 'Monthly Expense Budget',
         date: DateTime(now.year, now.month, now.day),
         timeString: '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}',
@@ -605,6 +659,16 @@ class AccountsScreen extends StatelessWidget {
       );
       await accountProvider.addIncome(income);
       if (context.mounted) {
+        final catProv = context.read<CategoryProvider>();
+        final settings = context.read<SettingsProvider>();
+        context.read<ReportsProvider>().loadReportSummary(
+          categories: catProv.allCategories.isNotEmpty
+              ? catProv.allCategories
+              : catProv.categories,
+          currencySymbol: settings.currencySymbol,
+          showLoadingIndicator: false,
+        );
+
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

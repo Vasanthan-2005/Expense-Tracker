@@ -56,9 +56,12 @@ class DatabaseHelper {
 
     return await openDatabase(
       dbPath,
-      version: 6,
+      version: 7,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
+      onOpen: (db) async {
+        await _ensureSalaryCategoryAssigned(db);
+      },
       onConfigure: (db) async {
         await db.execute('PRAGMA foreign_keys = ON');
       },
@@ -349,6 +352,35 @@ class DatabaseHelper {
 
     try {
       await db.update('accounts', {'name': 'Expense Account'}, where: 'name = ? OR LOWER(name) = ?', whereArgs: ['UPI / Bank', 'upi / bank']);
+    } catch (_) {}
+
+    if (oldVersion < 7) {
+      await _ensureSalaryCategoryAssigned(db);
+    }
+  }
+
+  Future<void> _ensureSalaryCategoryAssigned(Database db) async {
+    try {
+      final incomeCats = await db.query('categories', where: "type = 'income'");
+      if (incomeCats.isNotEmpty) {
+        int? salaryId;
+        for (final row in incomeCats) {
+          final name = (row['name'] as String).toLowerCase();
+          final id = row['id'] as int;
+          if (name == 'salary') salaryId = id;
+          await db.update(
+            'incomes',
+            {'category_id': id},
+            where: "category_id IS NULL AND LOWER(source_or_note) LIKE '%$name%'",
+          );
+        }
+        salaryId ??= incomeCats.first['id'] as int;
+        await db.update(
+          'incomes',
+          {'category_id': salaryId},
+          where: 'category_id IS NULL',
+        );
+      }
     } catch (_) {}
   }
 
@@ -829,17 +861,63 @@ class DatabaseHelper {
 
   Future<int> insertIncome(Income income) async {
     final db = await database;
-    return await db.insert('incomes', income.toMap());
+    Income toInsert = income;
+    if (toInsert.categoryId == null) {
+      try {
+        final incomeCats = await getCategories(type: 'income');
+        if (incomeCats.isNotEmpty) {
+          Category? matchedCat;
+          if (toInsert.sourceOrNote != null && toInsert.sourceOrNote!.isNotEmpty) {
+            final noteLower = toInsert.sourceOrNote!.toLowerCase();
+            matchedCat = incomeCats.cast<Category?>().firstWhere(
+              (c) => noteLower.contains(c!.name.toLowerCase()) || c.name.toLowerCase().contains(noteLower),
+              orElse: () => null,
+            );
+          }
+          matchedCat ??= incomeCats.cast<Category?>().firstWhere(
+            (c) => c!.name.toLowerCase() == 'salary',
+            orElse: () => incomeCats.first,
+          );
+          if (matchedCat != null) {
+            toInsert = toInsert.copyWith(categoryId: matchedCat.id);
+          }
+        }
+      } catch (_) {}
+    }
+    return await db.insert('incomes', toInsert.toMap());
   }
 
   Future<int> updateIncome(Income income) async {
     final db = await database;
     if (income.id == null) return 0;
+    Income toUpdate = income;
+    if (toUpdate.categoryId == null) {
+      try {
+        final incomeCats = await getCategories(type: 'income');
+        if (incomeCats.isNotEmpty) {
+          Category? matchedCat;
+          if (toUpdate.sourceOrNote != null && toUpdate.sourceOrNote!.isNotEmpty) {
+            final noteLower = toUpdate.sourceOrNote!.toLowerCase();
+            matchedCat = incomeCats.cast<Category?>().firstWhere(
+              (c) => noteLower.contains(c!.name.toLowerCase()) || c.name.toLowerCase().contains(noteLower),
+              orElse: () => null,
+            );
+          }
+          matchedCat ??= incomeCats.cast<Category?>().firstWhere(
+            (c) => c!.name.toLowerCase() == 'salary',
+            orElse: () => incomeCats.first,
+          );
+          if (matchedCat != null) {
+            toUpdate = toUpdate.copyWith(categoryId: matchedCat.id);
+          }
+        }
+      } catch (_) {}
+    }
     return await db.update(
       'incomes',
-      income.toMap(),
+      toUpdate.toMap(),
       where: 'id = ?',
-      whereArgs: [income.id],
+      whereArgs: [toUpdate.id],
     );
   }
 
@@ -1393,6 +1471,9 @@ class DatabaseHelper {
       }
     }
 
+    // Migrate any uncategorized incomes to Salary category
+    await _ensureSalaryCategoryAssigned(db);
+
     // Purge unwanted old default accounts ('Savings')
     final savingsRes = await db.query('accounts', where: 'LOWER(name) = ?', whereArgs: ['savings']);
     if (savingsRes.isNotEmpty) {
@@ -1513,7 +1594,13 @@ class DatabaseHelper {
   Future<Map<int, int>> getIncomeCategoryTotalsForDateRange(String startIso, String endIso) async {
     final db = await database;
     final res = await db.rawQuery('''
-      SELECT COALESCE(category_id, 0) as cat_id, SUM(amount) as total 
+      SELECT 
+        COALESCE(
+          category_id, 
+          (SELECT id FROM categories WHERE type = 'income' AND LOWER(name) = 'salary' LIMIT 1),
+          0
+        ) as cat_id, 
+        SUM(amount) as total 
       FROM incomes 
       WHERE date >= ? AND date <= ?
       GROUP BY cat_id
@@ -1537,11 +1624,23 @@ class DatabaseHelper {
     final startIso = "${startDate.year.toString().padLeft(4, '0')}-${startDate.month.toString().padLeft(2, '0')}-${startDate.day.toString().padLeft(2, '0')}";
     final endIso = "${endDate.year.toString().padLeft(4, '0')}-${endDate.month.toString().padLeft(2, '0')}-${endDate.day.toString().padLeft(2, '0')}";
 
+    final salaryCat = await db.query(
+      'categories',
+      where: "type = 'income' AND LOWER(name) = 'salary'",
+      limit: 1,
+    );
+    final isSalaryCat = salaryCat.isNotEmpty && salaryCat.first['id'] == categoryId;
+
     final String where;
     final List<dynamic> whereArgs;
     if (categoryId != null && categoryId > 0) {
-      where = 'category_id = ? AND date >= ? AND date <= ?';
-      whereArgs = [categoryId, startIso, endIso];
+      if (isSalaryCat) {
+        where = '(category_id = ? OR category_id IS NULL OR category_id = 0) AND date >= ? AND date <= ?';
+        whereArgs = [categoryId, startIso, endIso];
+      } else {
+        where = 'category_id = ? AND date >= ? AND date <= ?';
+        whereArgs = [categoryId, startIso, endIso];
+      }
     } else {
       where = '(category_id IS NULL OR category_id = 0) AND date >= ? AND date <= ?';
       whereArgs = [startIso, endIso];

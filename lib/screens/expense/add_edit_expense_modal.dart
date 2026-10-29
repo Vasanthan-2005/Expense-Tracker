@@ -165,7 +165,9 @@ class _AddEditExpenseModalState extends State<AddEditExpenseModal> {
       }
 
       await reportsProvider.loadReportSummary(
-        categories: categoryProvider.categories,
+        categories: categoryProvider.allCategories.isNotEmpty
+            ? categoryProvider.allCategories
+            : categoryProvider.categories,
         currencySymbol: settingsProvider.currencySymbol,
         showLoadingIndicator: false,
       );

@@ -691,7 +691,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         }
                         if (context.mounted) {
                           context.read<ReportsProvider>().loadReportSummary(
-                            categories: categoryProvider.categories,
+                            categories: categoryProvider.allCategories.isNotEmpty
+                                ? categoryProvider.allCategories
+                                : categoryProvider.categories,
                             currencySymbol: currency,
                             showLoadingIndicator: false,
                           );

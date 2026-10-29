@@ -182,7 +182,11 @@ class ReportsProvider with ChangeNotifier {
       final db = DatabaseHelper.instance;
       final now = DateTime.now();
 
-      final List<Category> activeCategories = categories ?? await db.getCategories();
+      List<Category> activeCategories = categories ?? await db.getCategories();
+      if (!activeCategories.any((c) => c.type == 'income')) {
+        final incomeCats = await db.getCategories(type: 'income');
+        activeCategories = [...activeCategories, ...incomeCats];
+      }
       final catMap = {for (var c in activeCategories) c.id!: c};
 
       final startDate = activeStartDate;
@@ -253,7 +257,10 @@ class ReportsProvider with ChangeNotifier {
       // 2. Calculate Income Category Breakdown
       final List<CategorySpend> incomeCategoryBreakdown = [];
       incomeCategoryTotals.forEach((catId, total) {
-        final cat = catMap[catId];
+        var cat = catMap[catId];
+        if (cat == null && catId > 0) {
+          cat = activeCategories.cast<Category?>().firstWhere((c) => c?.id == catId, orElse: () => null);
+        }
         if (cat != null) {
           final pct = totalIncomePaise > 0 ? (total / totalIncomePaise.toDouble()) * 100 : 0.0;
           incomeCategoryBreakdown.add(CategorySpend(
@@ -267,13 +274,17 @@ class ReportsProvider with ChangeNotifier {
             expenseCount: 0,
           ));
         } else if (catId == 0 && total > 0) {
+          final salaryCat = activeCategories.cast<Category?>().firstWhere(
+            (c) => c?.name.toLowerCase() == 'salary',
+            orElse: () => null,
+          );
           final pct = totalIncomePaise > 0 ? (total / totalIncomePaise.toDouble()) * 100 : 0.0;
           incomeCategoryBreakdown.add(CategorySpend(
-            categoryId: 0,
-            categoryName: 'Other / Direct',
-            colorValue: 0xFF64748B,
-            iconCodePoint: Icons.more_horiz.codePoint,
-            iconFontFamily: 'MaterialIcons',
+            categoryId: salaryCat?.id ?? 0,
+            categoryName: salaryCat?.name ?? 'Salary',
+            colorValue: salaryCat?.colorValue ?? 0xFF10B981,
+            iconCodePoint: salaryCat?.iconCodePoint ?? Icons.payments.codePoint,
+            iconFontFamily: salaryCat?.iconFontFamily ?? 'MaterialIcons',
             totalMinorUnits: total,
             percentage: pct,
             expenseCount: 0,

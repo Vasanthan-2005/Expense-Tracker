@@ -290,5 +290,98 @@ void main() {
       // Overall account in Feb shows cumulative added up to Feb (₹20,000 + ₹10,000 = ₹30,000)
       expect(febCumulativeAdded[overallAcc.id], equals(3000000));
     });
+
+    test('7. Salary credited without explicit categoryId is auto-assigned Salary category and shown as Salary in reports (not Others)', () async {
+      final accounts = await dbHelper.getAccounts();
+      final salaryAcc = accounts.firstWhere((a) => a.name.toLowerCase().contains('salary'));
+      final allCats = await dbHelper.getCategories();
+      final incomeCats = await dbHelper.getCategories(type: 'income');
+      final salaryCat = incomeCats.firstWhere((c) => c.name.toLowerCase() == 'salary');
+
+      final now = DateTime.now();
+
+      // Simulate Salary Credited button adding income with categoryId null or note 'Salary'
+      final incomeId = await dbHelper.insertIncome(Income(
+        amountMinorUnits: 5000000, // ₹50,000
+        accountId: salaryAcc.id!,
+        categoryId: null, // intentionally null as from salary button
+        sourceOrNote: 'Salary',
+        date: now,
+        timeString: '09:00',
+        createdAt: now,
+        updatedAt: now,
+      ));
+
+      // Check that category_id was assigned to salaryCat.id in DB
+      final db = await dbHelper.database;
+      final rows = await db.query('incomes', where: 'id = ?', whereArgs: [incomeId]);
+      expect(rows.first['category_id'], equals(salaryCat.id));
+
+      // Check ReportsProvider summary
+      final reportsProv = ReportsProvider();
+      await reportsProv.loadReportSummary(
+        categories: allCats,
+        currencySymbol: '₹',
+        showLoadingIndicator: false,
+      );
+
+      final summary = reportsProv.summary;
+      expect(summary, isNotNull);
+      expect(summary!.totalIncomeMinor, equals(5000000));
+
+      // Verify that income breakdown contains Salary and NOT 'Other / Direct'
+      expect(summary.incomeCategoryBreakdown.length, equals(1));
+      final topIncome = summary.incomeCategoryBreakdown.first;
+      expect(topIncome.categoryName.toLowerCase(), equals('salary'));
+      expect(topIncome.categoryName, isNot(contains('Other')));
+      expect(topIncome.totalMinorUnits, equals(5000000));
+    });
+
+    test('8. Legacy incomes with null category_id are cleanly grouped and displayed under Salary', () async {
+      final accounts = await dbHelper.getAccounts();
+      final acc = accounts.first;
+      final allCats = await dbHelper.getCategories();
+      final incomeCats = await dbHelper.getCategories(type: 'income');
+      final salaryCat = incomeCats.firstWhere((c) => c.name.toLowerCase() == 'salary');
+
+      final now = DateTime.now();
+
+      // Force-insert raw income row with NULL category_id directly into database
+      final db = await dbHelper.database;
+      await db.rawInsert('''
+        INSERT INTO incomes (amount, account_id, category_id, source_or_note, date, time, created_at, updated_at)
+        VALUES (?, ?, NULL, ?, ?, ?, ?, ?)
+      ''', [
+        3500000,
+        acc.id,
+        'Salary',
+        "${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}",
+        '10:00',
+        now.millisecondsSinceEpoch,
+        now.millisecondsSinceEpoch,
+      ]);
+
+      // Category totals query should group it under salaryCat.id
+      final dateIso = "${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
+      final totals = await dbHelper.getIncomeCategoryTotalsForDateRange(dateIso, dateIso);
+      expect(totals[salaryCat.id], equals(3500000));
+      expect(totals.containsKey(0), isFalse);
+
+      // ReportsProvider loads it as Salary category, even if only expense categories are passed
+      final expenseCatsOnly = await dbHelper.getCategories(type: 'expense');
+      final reportsProv = ReportsProvider();
+      await reportsProv.loadReportSummary(
+        categories: expenseCatsOnly,
+        currencySymbol: '₹',
+        showLoadingIndicator: false,
+      );
+
+      final summary = reportsProv.summary;
+      expect(summary, isNotNull);
+      expect(summary!.incomeCategoryBreakdown.length, equals(1));
+      expect(summary.incomeCategoryBreakdown.first.categoryName.toLowerCase(), equals('salary'));
+      expect(summary.incomeCategoryBreakdown.first.categoryName, isNot(contains('Other')));
+      expect(summary.incomeCategoryBreakdown.first.totalMinorUnits, equals(3500000));
+    });
   });
 }

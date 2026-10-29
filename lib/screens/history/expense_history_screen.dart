@@ -615,7 +615,9 @@ class _ExpenseHistoryScreenState extends State<ExpenseHistoryScreen> {
                                 }
                                 if (context.mounted) {
                                   context.read<ReportsProvider>().loadReportSummary(
-                                    categories: categoryProvider.categories,
+                                    categories: categoryProvider.allCategories.isNotEmpty
+                                        ? categoryProvider.allCategories
+                                        : categoryProvider.categories,
                                     currencySymbol: currency,
                                     showLoadingIndicator: false,
                                   );

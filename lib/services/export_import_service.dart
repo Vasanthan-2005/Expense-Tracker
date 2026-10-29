@@ -585,6 +585,7 @@ class ExportImportService {
             await db.insertIncome(Income(
               amountMinorUnits: Income.doubleToMinorUnits(doubleAmount),
               accountId: accId,
+              categoryId: catId,
               sourceOrNote: note,
               date: date,
               timeString: '12:00',
@@ -710,6 +711,7 @@ class ExportImportService {
           await db.insertIncome(Income(
             amountMinorUnits: Income.doubleToMinorUnits(doubleAmount),
             accountId: defaultAccId,
+            categoryId: catId,
             sourceOrNote: note,
             date: date,
             timeString: '12:00',
@@ -997,6 +999,7 @@ class ExportImportService {
             await db.insertIncome(Income(
               amountMinorUnits: Income.doubleToMinorUnits(doubleAmount),
               accountId: defaultAccId,
+              categoryId: catId,
               sourceOrNote: note,
               date: date,
               timeString: '12:00',
